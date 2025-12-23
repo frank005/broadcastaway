@@ -113,16 +113,45 @@ export async function POST(request: NextRequest) {
         // Clean channel name for file path:
         // 1. Remove bc_ prefix
         // 2. Remove random suffix pattern (_1234)
-        // 3. Replace underscores with hyphens (safer for file paths)
-        // 4. Remove any invalid characters
+        // 3. Agora fileNamePrefix only allows alphanumeric characters (NO dashes, NO underscores)
+        // 4. Replace all non-alphanumeric with nothing (remove them)
         let cleanChannelName = channelName.replace(/^bc_/, '');
         cleanChannelName = cleanChannelName.replace(/_\d+$/, '');
-        cleanChannelName = cleanChannelName.replace(/_/g, '-');
-        // Remove any characters that aren't alphanumeric, hyphen, or underscore
-        cleanChannelName = cleanChannelName.replace(/[^a-zA-Z0-9\-_]/g, '');
+        // Remove ALL non-alphanumeric characters (no dashes, no underscores allowed)
+        cleanChannelName = cleanChannelName.replace(/[^a-zA-Z0-9]/g, '');
+        
+        // Ensure cleanChannelName is not empty
+        if (!cleanChannelName) {
+          cleanChannelName = 'recording';
+        }
+        
+        // Clean all prefix elements to ensure they only contain alphanumeric characters
+        // Agora fileNamePrefix validation is strict - only alphanumeric allowed (no dashes, no underscores)
+        const cleanPrefixElements = (elements: string[]): string[] => {
+          return elements
+            .map(p => String(p).replace(/[^a-zA-Z0-9]/g, '')) // Remove all non-alphanumeric
+            .filter(p => p.length > 0); // Remove empty strings
+        };
+        
+        const cleanedBasePrefix = cleanPrefixElements(basePrefix);
         
         // Combine: envPrefix,YYYY,MM,DD,cleanChannelName
-        return [...basePrefix, String(year), month, day, cleanChannelName];
+        // If basePrefix is empty, just use date and channel name
+        const prefix = cleanedBasePrefix.length > 0 
+          ? [...cleanedBasePrefix, String(year), month, day, cleanChannelName]
+          : [String(year), month, day, cleanChannelName];
+        
+        // Final validation: ensure all elements are alphanumeric only
+        const validatedPrefix = prefix
+          .map(p => String(p).replace(/[^a-zA-Z0-9]/g, ''))
+          .filter(p => p.length > 0);
+        
+        // Agora requires at least one element
+        if (validatedPrefix.length === 0) {
+          validatedPrefix.push('recording');
+        }
+        
+        return validatedPrefix;
       };
 
       if (recordingType === 'composite') {
@@ -178,11 +207,21 @@ export async function POST(request: NextRequest) {
         // Webpage recording
         const fileNamePrefix = buildFileNamePrefix(process.env.RECORDING_WEB_STORAGE_FILE_NAME_PREFIX);
         
+        // Validate fileNamePrefix - Agora requires it to be a non-empty array
+        if (!Array.isArray(fileNamePrefix) || fileNamePrefix.length === 0) {
+          console.error('❌ [CLOUD RECORDING API] Invalid fileNamePrefix:', fileNamePrefix);
+          return NextResponse.json(
+            { error: 'Invalid fileNamePrefix configuration' },
+            { status: 400 }
+          );
+        }
+        
         console.log('📹 [CLOUD RECORDING API] Webpage recording config:', {
           hasStorageAccessKey: !!process.env.RECORDING_WEB_STORAGE_ACCESS_KEY,
           hasStorageSecretKey: !!process.env.RECORDING_WEB_STORAGE_SECRET_KEY,
           hasStorageBucket: !!process.env.RECORDING_WEB_STORAGE_BUCKET,
           fileNamePrefix: fileNamePrefix,
+          fileNamePrefixLength: fileNamePrefix.length,
           recordingBaseUrl: process.env.RECORDING_WEBPAGE_URL || 'https://broadcastaway.netlify.app'
         });
 
@@ -317,10 +356,11 @@ export async function POST(request: NextRequest) {
         const day = String(now.getDate()).padStart(2, '0');
         
         // Clean channel name for file path (same as in buildFileNamePrefix)
+        // Agora fileNamePrefix only allows alphanumeric characters (NO dashes, NO underscores)
         let cleanChannelName = channelName.replace(/^bc_/, '');
         cleanChannelName = cleanChannelName.replace(/_\d+$/, '');
-        cleanChannelName = cleanChannelName.replace(/_/g, '-');
-        cleanChannelName = cleanChannelName.replace(/[^a-zA-Z0-9\-_]/g, '');
+        // Remove ALL non-alphanumeric characters (no dashes, no underscores allowed)
+        cleanChannelName = cleanChannelName.replace(/[^a-zA-Z0-9]/g, '');
         
         return [...basePrefix, String(year), month, day, cleanChannelName];
       };
