@@ -8,12 +8,16 @@ export const dynamic = 'force-dynamic';
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
-    const page = parseInt(searchParams.get('page') || '0');
+    // Frontend uses 0-based indexing, but Agora API uses 1-based indexing
+    const pageFrontend = parseInt(searchParams.get('page') || '0');
     const pageSize = parseInt(searchParams.get('pageSize') || '20');
     const search = searchParams.get('search') || '';
     
+    // Convert to 1-based for Agora API (page 0 -> page 1, page 1 -> page 2, etc.)
+    const pageAgora = pageFrontend + 1;
+    
     console.log('📊 [CHANNELS API] Request received');
-    console.log('📊 [CHANNELS API] Params:', { page, pageSize, search });
+    console.log('📊 [CHANNELS API] Params:', { pageFrontend, pageAgora, pageSize, search });
     
     // Get Agora credentials
     const appId = process.env.NEXT_PUBLIC_AGORA_APP_ID;
@@ -28,7 +32,7 @@ export async function GET(request: NextRequest) {
           error: 'Missing Agora credentials',
           channels: [],
           total: 0,
-          page,
+          page: pageFrontend,
           pageSize
         },
         { status: 500 }
@@ -37,8 +41,9 @@ export async function GET(request: NextRequest) {
     
     // Build Agora REST API URL
     // Correct endpoint: https://api.agora.io/dev/v1/channel/{appid}
+    // Agora uses 1-based pagination (page_no=1 is the first page)
     const baseUrl = process.env.AGORA_BASE_URL || 'https://api.agora.io';
-    const url = `${baseUrl}/dev/v1/channel/${appId}?page_no=${page}&page_size=${pageSize}`;
+    const url = `${baseUrl}/dev/v1/channel/${appId}?page_no=${pageAgora}&page_size=${pageSize}`;
     
     console.log('📊 [CHANNELS API] Using endpoint:', url);
     
@@ -73,7 +78,7 @@ export async function GET(request: NextRequest) {
             error: 'Request timeout - Agora API took too long to respond',
             channels: [],
             total: 0,
-            page,
+            page: pageFrontend,
             pageSize
           },
           { status: 504 }
@@ -91,7 +96,7 @@ export async function GET(request: NextRequest) {
           error: `Agora API error: ${response.status}`,
           channels: [],
           total: 0,
-          page,
+          page: pageFrontend,
           pageSize
         },
         { status: response.status }
@@ -284,7 +289,7 @@ export async function GET(request: NextRequest) {
       success: true,
       channels: activeChannels,
       total: activeChannels.length,
-      page,
+      page: pageFrontend,
       pageSize,
     }, {
       headers: {
@@ -293,13 +298,14 @@ export async function GET(request: NextRequest) {
     });
   } catch (error: any) {
     console.error('❌ [CHANNELS API] Error:', error);
+    const pageFrontend = parseInt(new URL(request.url).searchParams.get('page') || '0');
     return NextResponse.json(
       { 
         success: false, 
         error: error.message,
         channels: [],
         total: 0,
-        page: 1,
+        page: pageFrontend,
         pageSize: 20
       },
       { status: 500 }
