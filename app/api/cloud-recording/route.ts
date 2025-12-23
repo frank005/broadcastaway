@@ -177,11 +177,21 @@ export async function POST(request: NextRequest) {
       } else {
         // Webpage recording
         const fileNamePrefix = buildFileNamePrefix(process.env.RECORDING_WEB_STORAGE_FILE_NAME_PREFIX);
+        
+        console.log('📹 [CLOUD RECORDING API] Webpage recording config:', {
+          hasStorageAccessKey: !!process.env.RECORDING_WEB_STORAGE_ACCESS_KEY,
+          hasStorageSecretKey: !!process.env.RECORDING_WEB_STORAGE_SECRET_KEY,
+          hasStorageBucket: !!process.env.RECORDING_WEB_STORAGE_BUCKET,
+          fileNamePrefix: fileNamePrefix,
+          recordingBaseUrl: process.env.RECORDING_WEBPAGE_URL || 'https://broadcastaway.netlify.app'
+        });
 
         // Build the webpage URL - it should automatically join as audience
         // Use environment variable for recording URL, fallback to Netlify URL, then request origin
         const recordingBaseUrl = process.env.RECORDING_WEBPAGE_URL || 'https://broadcastaway.netlify.app';
         const webpageUrl = body.webpageUrl || `${recordingBaseUrl}/watch/${channelName}?name=Recording&uid=${recordingUid}&token=${token}`;
+        
+        console.log('📹 [CLOUD RECORDING API] Webpage URL:', webpageUrl);
 
         startBody = {
           cname: channelName,
@@ -235,11 +245,18 @@ export async function POST(request: NextRequest) {
       });
 
       const data = await response.json();
-      console.log('📹 [CLOUD RECORDING API] Start response:', data);
+      console.log('📹 [CLOUD RECORDING API] Start response status:', response.status);
+      console.log('📹 [CLOUD RECORDING API] Start response data:', JSON.stringify(data, null, 2));
 
       if (!response.ok) {
+        console.error('❌ [CLOUD RECORDING API] Start failed:', {
+          status: response.status,
+          statusText: response.statusText,
+          error: data.message || data.error || data,
+          fullResponse: data
+        });
         return NextResponse.json(
-          { error: data.message || 'Failed to start recording' },
+          { error: data.message || data.error || data.resourceId || 'Failed to start recording' },
           { status: response.status }
         );
       }
