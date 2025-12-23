@@ -2008,12 +2008,30 @@ function BroadcastPageContent() {
           
           console.log('📹 [WEBPAGE RECORDING] Stop response:', JSON.stringify(stopRes, null, 2));
           console.log('📹 [WEBPAGE RECORDING] serverResponse:', stopRes.serverResponse);
-          console.log('📹 [WEBPAGE RECORDING] fileList:', stopRes.serverResponse?.fileList);
+          console.log('📹 [WEBPAGE RECORDING] extensionServiceState:', stopRes.serverResponse?.extensionServiceState);
           console.log('📹 [WEBPAGE RECORDING] storageConfig:', stopRes.storageConfig);
           
+          // Extract file names from extensionServiceState
+          // For webpage recording, fileList is in extensionServiceState[1].payload.fileList
+          let fileList: any[] = [];
+          if (stopRes.serverResponse?.extensionServiceState) {
+            const webRecorderService = stopRes.serverResponse.extensionServiceState.find(
+              (service: any) => service.serviceName === 'web_recorder_service'
+            );
+            if (webRecorderService?.payload?.fileList) {
+              fileList = webRecorderService.payload.fileList;
+              console.log('📹 [WEBPAGE RECORDING] Found fileList in web_recorder_service:', fileList);
+            }
+          }
+          
+          // Fallback: Check for direct fileList (for composite recording compatibility)
+          if (fileList.length === 0 && stopRes.serverResponse?.fileList) {
+            fileList = stopRes.serverResponse.fileList;
+            console.log('📹 [WEBPAGE RECORDING] Using direct fileList:', fileList);
+          }
+          
           // Extract file names and generate URLs
-          if (stopRes.serverResponse?.fileList && stopRes.storageConfig) {
-            const fileList = stopRes.serverResponse.fileList;
+          if (fileList.length > 0 && stopRes.storageConfig) {
             const { bucket, vendor, region, fileNamePrefix } = stopRes.storageConfig;
             
             let m3u8Url = '';
@@ -2021,9 +2039,11 @@ function BroadcastPageContent() {
             
             console.log('📹 [WEBPAGE RECORDING] Processing fileList:', fileList);
             fileList.forEach((file: any, index: number) => {
-              // Handle both object format {fileName: "..."} and string format
-              const fileName = typeof file === 'string' ? file : (file.fileName || file);
-              console.log(`📹 [WEBPAGE RECORDING] File ${index}:`, fileName, 'type:', typeof fileName);
+              // Handle different formats: string, {fileName: "..."}, or {filename: "..."}
+              const fileName = typeof file === 'string' 
+                ? file 
+                : (file.fileName || file.filename || file);
+              console.log(`📹 [WEBPAGE RECORDING] File ${index}:`, fileName, 'type:', typeof fileName, 'raw file:', file);
               if (fileName && typeof fileName === 'string') {
                 if (fileName.endsWith('.m3u8')) {
                   m3u8Url = generateRecordingUrl(bucket, vendor, region, fileNamePrefix, fileName);
@@ -2052,10 +2072,12 @@ function BroadcastPageContent() {
             }
           } else {
             console.warn('⚠️ [WEBPAGE RECORDING] Missing fileList or storageConfig:', {
+              hasExtensionServiceState: !!stopRes.serverResponse?.extensionServiceState,
               hasFileList: !!stopRes.serverResponse?.fileList,
               hasStorageConfig: !!stopRes.storageConfig,
-              fileListLength: stopRes.serverResponse?.fileList?.length,
-              storageConfig: stopRes.storageConfig
+              fileListLength: fileList.length,
+              storageConfig: stopRes.storageConfig,
+              extensionServiceState: stopRes.serverResponse?.extensionServiceState
             });
           }
           
