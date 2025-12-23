@@ -48,13 +48,39 @@ export async function GET(request: NextRequest) {
     
     console.log('📊 [CHANNELS API] Fetching from Agora:', url);
     
-    const response = await fetch(url, {
-      method: 'GET',
-      headers: {
-        'Authorization': `Basic ${auth}`,
-        'Content-Type': 'application/json',
-      },
-    });
+    // Add timeout to prevent hanging requests
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+    
+    let response;
+    try {
+      response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Basic ${auth}`,
+          'Content-Type': 'application/json',
+        },
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+    } catch (err: any) {
+      clearTimeout(timeoutId);
+      if (err.name === 'AbortError') {
+        console.error('❌ [CHANNELS API] Request timeout');
+        return NextResponse.json(
+          { 
+            success: false, 
+            error: 'Request timeout - Agora API took too long to respond',
+            channels: [],
+            total: 0,
+            page,
+            pageSize
+          },
+          { status: 504 }
+        );
+      }
+      throw err;
+    }
     
     if (!response.ok) {
       const errorText = await response.text();
@@ -123,7 +149,8 @@ export async function GET(request: NextRequest) {
     }
     
     // Get host/viewer counts for each channel
-    const channelsWithCounts = await Promise.all(
+    // Use Promise.allSettled to handle partial failures gracefully
+    const channelsWithCounts = await Promise.allSettled(
       filteredChannels.map(async (channel: any) => {
         const channelName = channel.channel_name || channel.name;
         // Use uid_count from channel data as baseline
@@ -137,12 +164,28 @@ export async function GET(request: NextRequest) {
           const userUrl = `${baseUrl}/dev/v1/channel/user/${appId}/${encodeURIComponent(channelName)}`;
           console.log(`📊 [CHANNELS API] Fetching users from: ${userUrl}`);
           
-          const userResponse = await fetch(userUrl, {
-            headers: {
-              'Authorization': `Basic ${auth}`,
-              'Content-Type': 'application/json',
-            },
-          });
+          // Add timeout for user count requests (5 seconds)
+          const userController = new AbortController();
+          const userTimeoutId = setTimeout(() => userController.abort(), 5000);
+          
+          let userResponse;
+          try {
+            userResponse = await fetch(userUrl, {
+              headers: {
+                'Authorization': `Basic ${auth}`,
+                'Content-Type': 'application/json',
+              },
+              signal: userController.signal,
+            });
+            clearTimeout(userTimeoutId);
+          } catch (fetchErr: any) {
+            clearTimeout(userTimeoutId);
+            if (fetchErr.name === 'AbortError') {
+              console.warn(`⚠️ [CHANNELS API] User count request timeout for ${channelName}`);
+              throw new Error('Timeout');
+            }
+            throw fetchErr;
+          }
           
           if (userResponse.ok) {
             const userData = await userResponse.json();
@@ -184,8 +227,8 @@ export async function GET(request: NextRequest) {
             const errorText = await userResponse.text();
             console.warn(`⚠️ [CHANNELS API] User API returned ${userResponse.status} for ${channelName}:`, errorText);
           }
-        } catch (err) {
-          console.warn(`⚠️ [CHANNELS API] Failed to get user count for ${channelName}:`, err);
+        } catch (err: any) {
+          console.warn(`⚠️ [CHANNELS API] Failed to get user count for ${channelName}:`, err?.message || err);
         }
         
         // Fallback to channel uid_count if detailed user fetch failed
@@ -203,8 +246,29 @@ export async function GET(request: NextRequest) {
       })
     );
     
+    // Handle Promise.allSettled results - extract values and handle rejections
+    const processedChannels = channelsWithCounts.map((result, index) => {
+      if (result.status === 'fulfilled') {
+        return result.value;
+      } else {
+        // If a promise was rejected, use fallback data from the original channel
+        const channel = filteredChannels[index];
+        const channelName = channel.channel_name || channel.name;
+        const baseUserCount = channel.uid_count || channel.user_count || 0;
+        console.warn(`⚠️ [CHANNELS API] Promise rejected for ${channelName}, using fallback`);
+        return {
+          ...channel,
+          name: channelName,
+          hostCount: baseUserCount > 0 ? 1 : 0,
+          viewerCount: Math.max(0, baseUserCount - 1),
+          totalUsers: baseUserCount,
+          uidCount: baseUserCount,
+        };
+      }
+    });
+    
     // Filter out channels with no users
-    const activeChannels = channelsWithCounts.filter((ch: any) => ch.totalUsers > 0);
+    const activeChannels = processedChannels.filter((ch: any) => ch.totalUsers > 0);
     
     console.log('📊 [CHANNELS API] Filtered results:', {
       totalChannels: channelsWithCounts.length,
@@ -214,12 +278,18 @@ export async function GET(request: NextRequest) {
     
     console.log('✅ [CHANNELS API] Returning', activeChannels.length, 'active channels');
     
+    // Add cache headers to prevent stale data, but allow short-term caching
+    // Cache for 2 seconds to reduce load, but ensure fresh data
     return NextResponse.json({
       success: true,
       channels: activeChannels,
       total: activeChannels.length,
       page,
       pageSize,
+    }, {
+      headers: {
+        'Cache-Control': 'public, s-maxage=2, stale-while-revalidate=5',
+      },
     });
   } catch (error: any) {
     console.error('❌ [CHANNELS API] Error:', error);

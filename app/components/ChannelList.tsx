@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Search, Users, Play, RefreshCw, AlertCircle } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 
@@ -20,8 +20,26 @@ export default function ChannelList() {
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [refreshing, setRefreshing] = useState(false);
+  const abortControllerRef = useRef<AbortController | null>(null);
+  const isFetchingRef = useRef(false);
 
   const fetchChannels = useCallback(async () => {
+    // Prevent multiple simultaneous requests
+    if (isFetchingRef.current) {
+      console.log('⏸️ [CHANNEL LIST] Request already in progress, skipping...');
+      return;
+    }
+
+    // Cancel any previous request
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+
+    // Create new abort controller for this request
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+    isFetchingRef.current = true;
+
     try {
       setError(null);
       setRefreshing(true);
@@ -35,8 +53,21 @@ export default function ChannelList() {
         params.append('search', searchTerm.trim());
       }
       
-      const response = await fetch(`/api/channels?${params}`);
+      const response = await fetch(`/api/channels?${params}`, {
+        signal: controller.signal,
+      });
+      
+      // Check if request was aborted
+      if (controller.signal.aborted) {
+        return;
+      }
+      
       const data = await response.json();
+      
+      // Check again after async operation
+      if (controller.signal.aborted) {
+        return;
+      }
       
       if (data.success) {
         setChannels(data.channels || []);
@@ -44,10 +75,18 @@ export default function ChannelList() {
         setError(data.error || 'Failed to fetch channels');
       }
     } catch (err: any) {
+      // Don't set error if request was aborted
+      if (err.name === 'AbortError') {
+        console.log('⏸️ [CHANNEL LIST] Request aborted');
+        return;
+      }
       setError(err.message);
     } finally {
-      setLoading(false);
-      setRefreshing(false);
+      if (!controller.signal.aborted) {
+        setLoading(false);
+        setRefreshing(false);
+      }
+      isFetchingRef.current = false;
     }
   }, [searchTerm]);
 
@@ -60,13 +99,28 @@ export default function ChannelList() {
     if (searchTerm.trim()) return; // Don't auto-refresh when searching
     
     const interval = setInterval(() => {
-      if (!loading && !refreshing) {
+      if (!isFetchingRef.current) {
         fetchChannels();
       }
     }, 10000);
 
-    return () => clearInterval(interval);
-  }, [fetchChannels, loading, refreshing, searchTerm]);
+    return () => {
+      clearInterval(interval);
+      // Cleanup: abort any in-flight request when component unmounts
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+    };
+  }, [fetchChannels, searchTerm]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+    };
+  }, []);
 
   const handleJoinChannel = (channelName: string) => {
     router.push(`/watch/${channelName}`);
