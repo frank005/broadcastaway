@@ -1810,7 +1810,11 @@ function BroadcastPageContent() {
     if (vendor === 1) {
       // Amazon S3
       const regionStr = s3Regions[region] || 'us-east-1';
-      const prefixPath = fileNamePrefix.join('/');
+      const prefixPath = Array.isArray(fileNamePrefix) && fileNamePrefix.length > 0 
+        ? fileNamePrefix.join('/') 
+        : '';
+      
+      console.log('📹 [GENERATE URL] Input:', { fileName, fileNamePrefix, prefixPath, bucket, region });
       
       // Check if fileName already includes a path (contains slashes)
       // Agora may return just the filename or the full path
@@ -1820,16 +1824,24 @@ function BroadcastPageContent() {
         // File name already includes the full path (e.g., "BroadCastaway/composite/2025/12/23/summer/37279fd86a4b1620b24306be5369d171_summer_0.mp4")
         // Use it as-is - Agora returns the full path
         filePath = fileName;
+        console.log('📹 [GENERATE URL] FileName has path, using as-is:', filePath);
       } else {
         // File name is just the filename (e.g., "37279fd86a4b1620b24306be5369d171_summer_0.mp4")
         // Prepend the prefix path
-        filePath = `${prefixPath}/${fileName}`;
+        if (prefixPath) {
+          filePath = `${prefixPath}/${fileName}`;
+        } else {
+          filePath = fileName;
+        }
+        console.log('📹 [GENERATE URL] FileName is just filename, prepending prefix:', filePath);
       }
       
       // Ensure no double slashes and remove leading slash
       filePath = filePath.replace(/\/+/g, '/').replace(/^\//, '');
+      const finalUrl = `https://${bucket}.s3.${regionStr}.amazonaws.com/${filePath}`;
+      console.log('📹 [GENERATE URL] Final URL:', finalUrl);
       
-      return `https://${bucket}.s3.${regionStr}.amazonaws.com/${filePath}`;
+      return finalUrl;
     }
     
     // For other vendors, return empty string (can be extended later)
@@ -2033,6 +2045,15 @@ function BroadcastPageContent() {
           // Extract file names and generate URLs
           if (fileList.length > 0 && stopRes.storageConfig) {
             const { bucket, vendor, region, fileNamePrefix } = stopRes.storageConfig;
+            
+            console.log('📹 [WEBPAGE RECORDING] Storage config:', {
+              bucket,
+              vendor,
+              region,
+              fileNamePrefix,
+              fileNamePrefixType: Array.isArray(fileNamePrefix) ? 'array' : typeof fileNamePrefix,
+              fileNamePrefixLength: Array.isArray(fileNamePrefix) ? fileNamePrefix.length : 'N/A'
+            });
             
             let m3u8Url = '';
             let mp4Url = '';
