@@ -8,16 +8,13 @@ export const dynamic = 'force-dynamic';
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
-    // Frontend uses 0-based indexing, but Agora API uses 1-based indexing
-    const pageFrontend = parseInt(searchParams.get('page') || '0');
+    // Agora API uses 0-based indexing (page_no=0 is the first page)
+    const page = parseInt(searchParams.get('page') || '0');
     const pageSize = parseInt(searchParams.get('pageSize') || '20');
     const search = searchParams.get('search') || '';
     
-    // Convert to 1-based for Agora API (page 0 -> page 1, page 1 -> page 2, etc.)
-    const pageAgora = pageFrontend + 1;
-    
     console.log('📊 [CHANNELS API] Request received');
-    console.log('📊 [CHANNELS API] Params:', { pageFrontend, pageAgora, pageSize, search });
+    console.log('📊 [CHANNELS API] Params:', { page, pageSize, search });
     
     // Get Agora credentials
     const appId = process.env.NEXT_PUBLIC_AGORA_APP_ID;
@@ -32,7 +29,7 @@ export async function GET(request: NextRequest) {
           error: 'Missing Agora credentials',
           channels: [],
           total: 0,
-          page: pageFrontend,
+          page,
           pageSize
         },
         { status: 500 }
@@ -41,9 +38,9 @@ export async function GET(request: NextRequest) {
     
     // Build Agora REST API URL
     // Correct endpoint: https://api.agora.io/dev/v1/channel/{appid}
-    // Agora uses 1-based pagination (page_no=1 is the first page)
+    // Agora uses 0-based pagination (page_no=0 is the first page)
     const baseUrl = process.env.AGORA_BASE_URL || 'https://api.agora.io';
-    const url = `${baseUrl}/dev/v1/channel/${appId}?page_no=${pageAgora}&page_size=${pageSize}`;
+    const url = `${baseUrl}/dev/v1/channel/${appId}?page_no=${page}&page_size=${pageSize}`;
     
     console.log('📊 [CHANNELS API] Using endpoint:', url);
     
@@ -78,7 +75,7 @@ export async function GET(request: NextRequest) {
             error: 'Request timeout - Agora API took too long to respond',
             channels: [],
             total: 0,
-            page: pageFrontend,
+            page,
             pageSize
           },
           { status: 504 }
@@ -96,7 +93,7 @@ export async function GET(request: NextRequest) {
           error: `Agora API error: ${response.status}`,
           channels: [],
           total: 0,
-          page: pageFrontend,
+          page,
           pageSize
         },
         { status: response.status }
@@ -106,6 +103,9 @@ export async function GET(request: NextRequest) {
     const data = await response.json();
     console.log('📊 [CHANNELS API] Raw Agora response:', JSON.stringify(data, null, 2));
     console.log('📊 [CHANNELS API] Response keys:', Object.keys(data));
+    console.log('📊 [CHANNELS API] data.data structure:', data.data ? Object.keys(data.data) : 'no data.data');
+    console.log('📊 [CHANNELS API] data.data.channels type:', data.data?.channels ? typeof data.data.channels : 'undefined');
+    console.log('📊 [CHANNELS API] data.data.channels isArray:', Array.isArray(data.data?.channels));
     
     // According to Agora docs: { success: true, data: { channels: [...], total_size: 1 } }
     // Use simpler parsing like shopscribe - directly access data.data.channels
@@ -127,21 +127,48 @@ export async function GET(request: NextRequest) {
       channels = data.channels;
       console.log('📊 [CHANNELS API] Found channels as direct array:', channels.length);
     }
+    // NEW: Check if data.data itself is an array (some Agora responses might have this structure)
+    else if (data.data && Array.isArray(data.data) && data.data.length > 0) {
+      // Check if first element looks like a channel object
+      const firstItem = data.data[0];
+      if (firstItem && (firstItem.channel_name || firstItem.name || firstItem.channelName)) {
+        channels = data.data;
+        console.log('📊 [CHANNELS API] Found channels in data.data (direct array):', channels.length);
+      }
+    }
     
     console.log('📊 [CHANNELS API] Parsed channels:', channels.length);
+    console.log('📊 [CHANNELS API] total_size:', data.data?.total_size, 'vs channels.length:', channels.length);
+    
     if (channels.length > 0) {
       console.log('📊 [CHANNELS API] First channel sample:', JSON.stringify(channels[0], null, 2));
-      console.log('📊 [CHANNELS API] All channel names:', channels.map((ch: any) => ch.channel_name || ch.name || 'NO_NAME'));
+      console.log('📊 [CHANNELS API] All channel names:', channels.map((ch: any) => ch.channel_name || ch.name || ch.channelName || 'NO_NAME'));
+      console.log('📊 [CHANNELS API] All channel keys:', channels.map((ch: any) => Object.keys(ch || {})));
+      
+      // Log all channel names before filtering
+      channels.forEach((ch: any, idx: number) => {
+        const name = ch.channel_name || ch.name || ch.channelName || 'NO_NAME';
+        const uidCount = ch.uid_count || ch.user_count || ch.uidCount || 0;
+        console.log(`📊 [CHANNELS API] Channel ${idx}: name="${name}", uid_count=${uidCount}, keys=${Object.keys(ch).join(',')}`);
+      });
+    } else if (data.data?.total_size > 0) {
+      // If total_size > 0 but channels array is empty, log warning
+      console.warn('⚠️ [CHANNELS API] WARNING: total_size indicates channels exist but channels array is empty!');
+      console.warn('⚠️ [CHANNELS API] Full data.data structure:', JSON.stringify(data.data, null, 2));
     }
     
     // Filter to only show channels starting with "bc_"
     const broadcastChannels = channels.filter((ch: any) => {
-      const name = ch.channel_name || ch.name || '';
-      return name.startsWith('bc_');
+      const name = ch.channel_name || ch.name || ch.channelName || '';
+      const matches = name.startsWith('bc_');
+      if (!matches && name) {
+        console.log(`📊 [CHANNELS API] Channel "${name}" filtered out (doesn't start with bc_)`);
+      }
+      return matches;
     });
     
     console.log('📊 [CHANNELS API] Broadcast channels (bc_ prefix):', broadcastChannels.length);
-    console.log('📊 [CHANNELS API] Broadcast channel names:', broadcastChannels.map((ch: any) => ch.channel_name || ch.name));
+    console.log('📊 [CHANNELS API] Broadcast channel names:', broadcastChannels.map((ch: any) => ch.channel_name || ch.name || ch.channelName));
     
     // Apply search filter if provided (search within bc_ channels only)
     let filteredChannels = broadcastChannels;
@@ -157,9 +184,10 @@ export async function GET(request: NextRequest) {
     // Use Promise.allSettled to handle partial failures gracefully
     const channelsWithCounts = await Promise.allSettled(
       filteredChannels.map(async (channel: any) => {
-        const channelName = channel.channel_name || channel.name;
-        // Use uid_count from channel data as baseline
-        const baseUserCount = channel.uid_count || channel.user_count || 0;
+        const channelName = channel.channel_name || channel.name || channel.channelName;
+        // Use user_count or uid_count from channel data as baseline
+        // Agora returns user_count in the channel list response
+        const baseUserCount = channel.user_count || channel.uid_count || 0;
         
         console.log(`📊 [CHANNELS API] Processing channel: ${channelName}, baseUserCount: ${baseUserCount}`);
         
@@ -258,8 +286,9 @@ export async function GET(request: NextRequest) {
       } else {
         // If a promise was rejected, use fallback data from the original channel
         const channel = filteredChannels[index];
-        const channelName = channel.channel_name || channel.name;
-        const baseUserCount = channel.uid_count || channel.user_count || 0;
+        const channelName = channel.channel_name || channel.name || channel.channelName;
+        // Agora returns user_count in the channel list response
+        const baseUserCount = channel.user_count || channel.uid_count || 0;
         console.warn(`⚠️ [CHANNELS API] Promise rejected for ${channelName}, using fallback`);
         return {
           ...channel,
@@ -273,12 +302,19 @@ export async function GET(request: NextRequest) {
     });
     
     // Filter out channels with no users
-    const activeChannels = processedChannels.filter((ch: any) => ch.totalUsers > 0);
+    const activeChannels = processedChannels.filter((ch: any) => {
+      const hasUsers = ch.totalUsers > 0;
+      if (!hasUsers) {
+        console.log(`📊 [CHANNELS API] Filtering out channel "${ch.name}" (totalUsers: ${ch.totalUsers})`);
+      }
+      return hasUsers;
+    });
     
     console.log('📊 [CHANNELS API] Filtered results:', {
-      totalChannels: channelsWithCounts.length,
+      totalChannels: processedChannels.length,
       activeChannels: activeChannels.length,
-      filtered: channelsWithCounts.filter((ch: any) => ch.totalUsers === 0).map((ch: any) => ch.name)
+      filtered: processedChannels.filter((ch: any) => ch.totalUsers === 0).map((ch: any) => ch.name),
+      activeChannelNames: activeChannels.map((ch: any) => ch.name)
     });
     
     console.log('✅ [CHANNELS API] Returning', activeChannels.length, 'active channels');
@@ -289,7 +325,7 @@ export async function GET(request: NextRequest) {
       success: true,
       channels: activeChannels,
       total: activeChannels.length,
-      page: pageFrontend,
+      page,
       pageSize,
     }, {
       headers: {
@@ -298,14 +334,14 @@ export async function GET(request: NextRequest) {
     });
   } catch (error: any) {
     console.error('❌ [CHANNELS API] Error:', error);
-    const pageFrontend = parseInt(new URL(request.url).searchParams.get('page') || '0');
+    const page = parseInt(new URL(request.url).searchParams.get('page') || '0');
     return NextResponse.json(
       { 
         success: false, 
         error: error.message,
         channels: [],
         total: 0,
-        page: pageFrontend,
+        page,
         pageSize: 20
       },
       { status: 500 }
