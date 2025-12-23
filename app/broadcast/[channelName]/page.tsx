@@ -2006,6 +2006,11 @@ function BroadcastPageContent() {
             recordingSessions.webpage.sid
           );
           
+          console.log('📹 [WEBPAGE RECORDING] Stop response:', JSON.stringify(stopRes, null, 2));
+          console.log('📹 [WEBPAGE RECORDING] serverResponse:', stopRes.serverResponse);
+          console.log('📹 [WEBPAGE RECORDING] fileList:', stopRes.serverResponse?.fileList);
+          console.log('📹 [WEBPAGE RECORDING] storageConfig:', stopRes.storageConfig);
+          
           // Extract file names and generate URLs
           if (stopRes.serverResponse?.fileList && stopRes.storageConfig) {
             const fileList = stopRes.serverResponse.fileList;
@@ -2014,18 +2019,23 @@ function BroadcastPageContent() {
             let m3u8Url = '';
             let mp4Url = '';
             
-            fileList.forEach((file: any) => {
+            console.log('📹 [WEBPAGE RECORDING] Processing fileList:', fileList);
+            fileList.forEach((file: any, index: number) => {
               // Handle both object format {fileName: "..."} and string format
               const fileName = typeof file === 'string' ? file : (file.fileName || file);
+              console.log(`📹 [WEBPAGE RECORDING] File ${index}:`, fileName, 'type:', typeof fileName);
               if (fileName && typeof fileName === 'string') {
                 if (fileName.endsWith('.m3u8')) {
                   m3u8Url = generateRecordingUrl(bucket, vendor, region, fileNamePrefix, fileName);
+                  console.log('📹 [WEBPAGE RECORDING] Generated M3U8 URL:', m3u8Url);
                 } else if (fileName.endsWith('.mp4')) {
                   mp4Url = generateRecordingUrl(bucket, vendor, region, fileNamePrefix, fileName);
+                  console.log('📹 [WEBPAGE RECORDING] Generated MP4 URL:', mp4Url);
                 }
               }
             });
             
+            console.log('📹 [WEBPAGE RECORDING] Final URLs - M3U8:', m3u8Url, 'MP4:', mp4Url);
             if (m3u8Url || mp4Url) {
               setRecordingLinks((prev: any) => {
                 const updatedLinks = {
@@ -2036,7 +2046,17 @@ function BroadcastPageContent() {
                 localStorage.setItem(`castaway_recording_links_${channelName}`, JSON.stringify(updatedLinks));
                 return updatedLinks;
               });
+              console.log('📹 [WEBPAGE RECORDING] Links saved to state and localStorage');
+            } else {
+              console.warn('⚠️ [WEBPAGE RECORDING] No URLs generated - m3u8Url:', m3u8Url, 'mp4Url:', mp4Url);
             }
+          } else {
+            console.warn('⚠️ [WEBPAGE RECORDING] Missing fileList or storageConfig:', {
+              hasFileList: !!stopRes.serverResponse?.fileList,
+              hasStorageConfig: !!stopRes.storageConfig,
+              fileListLength: stopRes.serverResponse?.fileList?.length,
+              storageConfig: stopRes.storageConfig
+            });
           }
           
           toast.success('Webpage recording stopped!', { id: 'stop-webpage' });
