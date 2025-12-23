@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback, useRef, Suspense } from 'react';
 import { useParams, useSearchParams, useRouter } from 'next/navigation';
 import { 
   Mic, MicOff, Video, VideoOff, ScreenShare, PhoneOff, 
@@ -11,7 +11,7 @@ import { toast } from 'react-hot-toast';
 import agoraService from '../../../src/services/agoraService';
 import VideoPlayer from '../../components/VideoPlayer';
 
-export default function BroadcastPage() {
+function BroadcastPageContent() {
   const params = useParams();
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -4186,6 +4186,18 @@ export default function BroadcastPage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function BroadcastPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-agora-blue"></div>
+      </div>
+    }>
+      <BroadcastPageContent />
+    </Suspense>
   );
 }
 

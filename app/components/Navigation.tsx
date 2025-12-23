@@ -1,12 +1,12 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, Suspense } from 'react';
 import Link from 'next/link';
 import { usePathname, useSearchParams } from 'next/navigation';
 import { ShoppingBag, Video, Users, Home, Settings, HelpCircle, X } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 
-export default function Navigation() {
+function NavigationContent() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const [showSettings, setShowSettings] = useState(false);
@@ -476,6 +476,28 @@ export default function Navigation() {
         </div>
       )}
     </>
+  );
+}
+
+export default function Navigation() {
+  return (
+    <Suspense fallback={
+      <nav className="bg-white shadow-sm border-b border-gray-200">
+        <div className="container mx-auto px-4">
+          <div className="flex items-center justify-between h-16">
+            <Link href="/browse" className="flex items-center gap-2 text-xl font-bold text-gray-900">
+              <ShoppingBag className="text-agora-blue" size={24} />
+              <span>BroadCastaway</span>
+            </Link>
+            <div className="flex items-center gap-1">
+              <div className="w-8 h-8 bg-gray-200 rounded-full animate-pulse" />
+            </div>
+          </div>
+        </div>
+      </nav>
+    }>
+      <NavigationContent />
+    </Suspense>
   );
 }
 

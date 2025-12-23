@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 
 // Ensure we're using Node.js runtime (not Edge)
 export const runtime = 'nodejs';
+// Mark as dynamic since we use searchParams
+export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest) {
   try {
