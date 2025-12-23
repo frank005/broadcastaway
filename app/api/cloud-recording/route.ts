@@ -1,0 +1,339 @@
+import { NextRequest, NextResponse } from 'next/server';
+
+export const runtime = 'nodejs';
+
+export async function POST(request: NextRequest) {
+  try {
+    const body = await request.json();
+    const { action, channelName, recordingType, resourceId, sid } = body;
+    
+    console.log('📹 [CLOUD RECORDING API] Request received');
+    console.log('📹 [CLOUD RECORDING API] Action:', action);
+    console.log('📹 [CLOUD RECORDING API] Channel:', channelName);
+    console.log('📹 [CLOUD RECORDING API] Type:', recordingType);
+    
+    const appId = process.env.NEXT_PUBLIC_AGORA_APP_ID;
+    const customerId = process.env.AGORA_CUSTOMER_ID || process.env.AGORA_REST_API_KEY;
+    const customerSecret = process.env.AGORA_CUSTOMER_SECRET || process.env.AGORA_REST_API_SECRET;
+    const baseUrl = process.env.AGORA_BASE_URL || 'https://api.agora.io';
+
+    if (!appId || !customerId || !customerSecret) {
+      console.error('❌ [CLOUD RECORDING API] Missing credentials');
+      return NextResponse.json(
+        { error: 'Agora configuration missing' },
+        { status: 500 }
+      );
+    }
+
+    const auth = Buffer.from(`${customerId}:${customerSecret}`).toString('base64');
+    const headers = {
+      'Content-Type': 'application/json',
+      'Authorization': `Basic ${auth}`
+    };
+
+    if (action === 'acquire') {
+      // Acquire recording resource
+      const recordingUid = recordingType === 'composite' 
+        ? process.env.RECORDING_COMPOSITE_UID || '7777777'
+        : process.env.RECORDING_WEBPAGE_UID || '8888888';
+      
+      const acquireBody: any = {
+        cname: channelName,
+        uid: recordingUid,
+        clientRequest: {}
+      };
+
+      if (recordingType === 'web') {
+        acquireBody.clientRequest.resourceExpiredHour = 24;
+        acquireBody.clientRequest.scene = 1;
+      }
+
+      const url = `${baseUrl}/v1/apps/${appId}/cloud_recording/acquire`;
+      console.log('📹 [CLOUD RECORDING API] Acquiring resource:', url);
+
+      const response = await fetch(url, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(acquireBody)
+      });
+
+      const data = await response.json();
+      console.log('📹 [CLOUD RECORDING API] Acquire response:', data);
+
+      if (!response.ok) {
+        return NextResponse.json(
+          { error: data.message || 'Failed to acquire recording resource' },
+          { status: response.status }
+        );
+      }
+
+      return NextResponse.json(data);
+    }
+
+    if (action === 'start') {
+      // Start recording
+      if (!resourceId) {
+        return NextResponse.json(
+          { error: 'resourceId is required' },
+          { status: 400 }
+        );
+      }
+
+      const recordingUid = recordingType === 'composite' 
+        ? process.env.RECORDING_COMPOSITE_UID || '7777777'
+        : process.env.RECORDING_WEBPAGE_UID || '8888888';
+
+      // Get token for recording UID
+      const tokenResponse = await fetch(`${request.nextUrl.origin}/api/token`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          channelName,
+          uid: recordingUid,
+          role: 'host' // Recording needs publisher role (host = publisher)
+        })
+      });
+      const tokenData = await tokenResponse.json();
+      const token = tokenData.token || '';
+
+      let startBody: any;
+
+      // Helper function to build file name prefix with date and channel name
+      const buildFileNamePrefix = (envPrefix: string | undefined): string[] => {
+        const basePrefix = envPrefix
+          ? envPrefix.split(',').map(p => p.trim()).filter(Boolean)
+          : [];
+        
+        // Get current date in YYYY,MM,DD format
+        const now = new Date();
+        const year = now.getFullYear();
+        const month = String(now.getMonth() + 1).padStart(2, '0');
+        const day = String(now.getDate()).padStart(2, '0');
+        
+        // Clean channel name for file path:
+        // 1. Remove bc_ prefix
+        // 2. Remove random suffix pattern (_1234)
+        // 3. Replace underscores with hyphens (safer for file paths)
+        // 4. Remove any invalid characters
+        let cleanChannelName = channelName.replace(/^bc_/, '');
+        cleanChannelName = cleanChannelName.replace(/_\d+$/, '');
+        cleanChannelName = cleanChannelName.replace(/_/g, '-');
+        // Remove any characters that aren't alphanumeric, hyphen, or underscore
+        cleanChannelName = cleanChannelName.replace(/[^a-zA-Z0-9\-_]/g, '');
+        
+        // Combine: envPrefix,YYYY,MM,DD,cleanChannelName
+        return [...basePrefix, String(year), month, day, cleanChannelName];
+      };
+
+      if (recordingType === 'composite') {
+        // Composite recording
+        const fileNamePrefix = buildFileNamePrefix(process.env.RECORDING_COMPOSITE_STORAGE_FILE_NAME_PREFIX);
+
+        startBody = {
+          cname: channelName,
+          uid: recordingUid,
+          clientRequest: {
+            token: token,
+            recordingConfig: {
+              maxIdleTime: parseInt(process.env.RECORDING_MAX_IDLE_TIME || '30'),
+              streamTypes: parseInt(process.env.RECORDING_STREAM_TYPES || '2'),
+              audioProfile: parseInt(process.env.RECORDING_AUDIO_PROFILE || '0'),
+              channelType: parseInt(process.env.RECORDING_CHANNEL_TYPE || '1'),
+              videoStreamType: parseInt(process.env.RECORDING_VIDEO_STREAM_TYPE || '0'),
+              transcodingConfig: {
+                width: parseInt(process.env.RECORDING_TRANSCODING_WIDTH || '720'),
+                height: parseInt(process.env.RECORDING_TRANSCODING_HEIGHT || '1280'),
+                bitrate: parseInt(process.env.RECORDING_TRANSCODING_BITRATE || '3420'),
+                fps: parseInt(process.env.RECORDING_TRANSCODING_FPS || '30'),
+                mixedVideoLayout: parseInt(process.env.RECORDING_MIXED_VIDEO_LAYOUT || '1')
+              },
+              subscribeVideoUids: [],
+              unsubscribeVideoUids: [],
+              subscribeAudioUids: [],
+              unsubscribeAudioUids: [],
+              subscribeUidGroup: 0,
+              extensionParams: {
+                enableLivePlaylist: true
+              }
+            },
+            storageConfig: {
+              accessKey: process.env.RECORDING_COMPOSITE_STORAGE_ACCESS_KEY || '',
+              secretKey: process.env.RECORDING_COMPOSITE_STORAGE_SECRET_KEY || '',
+              region: parseInt(process.env.RECORDING_COMPOSITE_STORAGE_REGION || '0'),
+              vendor: parseInt(process.env.RECORDING_COMPOSITE_STORAGE_VENDOR || '1'),
+              bucket: process.env.RECORDING_COMPOSITE_STORAGE_BUCKET || '',
+              fileNamePrefix: fileNamePrefix
+            },
+            recordingFileConfig: {
+              avFileType: ['hls', 'mp4']
+            }
+          }
+        };
+        
+        console.log('📹 [CLOUD RECORDING API] ============================================');
+        console.log('📹 [CLOUD RECORDING API] Composite Recording Start Body:');
+        console.log(JSON.stringify(startBody, null, 2));
+        console.log('📹 [CLOUD RECORDING API] ============================================');
+      } else {
+        // Webpage recording
+        const fileNamePrefix = buildFileNamePrefix(process.env.RECORDING_WEB_STORAGE_FILE_NAME_PREFIX);
+
+        // Build the webpage URL - it should automatically join as audience
+        const webpageUrl = body.webpageUrl || `${request.nextUrl.origin}/watch/${channelName}?name=Recording&uid=${recordingUid}&token=${token}`;
+
+        startBody = {
+          cname: channelName,
+          uid: recordingUid,
+          clientRequest: {
+            token: token,
+            extensionServiceConfig: {
+              errorHandlePolicy: 'error_abort',
+              extensionServices: [
+                {
+                  serviceName: 'web_recorder_service',
+                  errorHandlePolicy: 'error_abort',
+                  serviceParam: {
+                    url: webpageUrl,
+                    audioProfile: parseInt(process.env.RECORDING_WEB_AUDIO_PROFILE || '0'),
+                    videoWidth: parseInt(process.env.RECORDING_WEB_VIDEO_WIDTH || '1280'),
+                    videoHeight: parseInt(process.env.RECORDING_WEB_VIDEO_HEIGHT || '720'),
+                    maxRecordingHour: parseInt(process.env.RECORDING_WEB_MAX_RECORDING_HOUR || '3')
+                  }
+                }
+              ]
+            },
+            storageConfig: {
+              accessKey: process.env.RECORDING_WEB_STORAGE_ACCESS_KEY || '',
+              secretKey: process.env.RECORDING_WEB_STORAGE_SECRET_KEY || '',
+              vendor: parseInt(process.env.RECORDING_WEB_STORAGE_VENDOR || '1'),
+              region: parseInt(process.env.RECORDING_WEB_STORAGE_REGION || '0'),
+              bucket: process.env.RECORDING_WEB_STORAGE_BUCKET || '',
+              fileNamePrefix: fileNamePrefix
+            },
+            recordingFileConfig: {
+              avFileType: ['hls', 'mp4']
+            }
+          }
+        };
+        
+        console.log('📹 [CLOUD RECORDING API] ============================================');
+        console.log('📹 [CLOUD RECORDING API] Webpage Recording Start Body:');
+        console.log(JSON.stringify(startBody, null, 2));
+        console.log('📹 [CLOUD RECORDING API] ============================================');
+      }
+
+      const urlMode = recordingType === 'composite' ? 'mix' : 'web';
+      const url = `${baseUrl}/v1/apps/${appId}/cloud_recording/resourceid/${resourceId}/mode/${urlMode}/start`;
+      console.log('📹 [CLOUD RECORDING API] Starting recording:', url);
+
+      const response = await fetch(url, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(startBody)
+      });
+
+      const data = await response.json();
+      console.log('📹 [CLOUD RECORDING API] Start response:', data);
+
+      if (!response.ok) {
+        return NextResponse.json(
+          { error: data.message || 'Failed to start recording' },
+          { status: response.status }
+        );
+      }
+
+      return NextResponse.json(data);
+    }
+
+    if (action === 'stop') {
+      // Stop recording
+      if (!resourceId || !sid) {
+        return NextResponse.json(
+          { error: 'resourceId and sid are required' },
+          { status: 400 }
+        );
+      }
+
+      const recordingUid = recordingType === 'composite' 
+        ? process.env.RECORDING_COMPOSITE_UID || '7777777'
+        : process.env.RECORDING_WEBPAGE_UID || '8888888';
+
+      const urlMode = recordingType === 'composite' ? 'mix' : 'web';
+      const url = `${baseUrl}/v1/apps/${appId}/cloud_recording/resourceid/${resourceId}/sid/${sid}/mode/${urlMode}/stop`;
+      
+      const stopBody = {
+        cname: channelName,
+        uid: recordingUid,
+        clientRequest: {}
+      };
+
+      console.log('📹 [CLOUD RECORDING API] Stopping recording:', url);
+
+      const response = await fetch(url, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(stopBody)
+      });
+
+      const data = await response.json();
+      console.log('📹 [CLOUD RECORDING API] Stop response:', data);
+
+      if (!response.ok) {
+        return NextResponse.json(
+          { error: data.message || 'Failed to stop recording' },
+          { status: response.status }
+        );
+      }
+
+      // Include storage config info in response for URL generation
+      // Rebuild fileNamePrefix for stop response
+      const buildFileNamePrefixForStop = (envPrefix: string | undefined): string[] => {
+        const basePrefix = envPrefix
+          ? envPrefix.split(',').map(p => p.trim()).filter(Boolean)
+          : [];
+        
+        const now = new Date();
+        const year = now.getFullYear();
+        const month = String(now.getMonth() + 1).padStart(2, '0');
+        const day = String(now.getDate()).padStart(2, '0');
+        
+        // Clean channel name for file path (same as in buildFileNamePrefix)
+        let cleanChannelName = channelName.replace(/^bc_/, '');
+        cleanChannelName = cleanChannelName.replace(/_\d+$/, '');
+        cleanChannelName = cleanChannelName.replace(/_/g, '-');
+        cleanChannelName = cleanChannelName.replace(/[^a-zA-Z0-9\-_]/g, '');
+        
+        return [...basePrefix, String(year), month, day, cleanChannelName];
+      };
+
+      const storageConfig = recordingType === 'composite' ? {
+        bucket: process.env.RECORDING_COMPOSITE_STORAGE_BUCKET || '',
+        vendor: parseInt(process.env.RECORDING_COMPOSITE_STORAGE_VENDOR || '1'),
+        region: parseInt(process.env.RECORDING_COMPOSITE_STORAGE_REGION || '0'),
+        fileNamePrefix: buildFileNamePrefixForStop(process.env.RECORDING_COMPOSITE_STORAGE_FILE_NAME_PREFIX)
+      } : {
+        bucket: process.env.RECORDING_WEB_STORAGE_BUCKET || '',
+        vendor: parseInt(process.env.RECORDING_WEB_STORAGE_VENDOR || '1'),
+        region: parseInt(process.env.RECORDING_WEB_STORAGE_REGION || '0'),
+        fileNamePrefix: buildFileNamePrefixForStop(process.env.RECORDING_WEB_STORAGE_FILE_NAME_PREFIX)
+      };
+
+      return NextResponse.json({
+        ...data,
+        storageConfig
+      });
+    }
+
+    return NextResponse.json(
+      { error: 'Invalid action' },
+      { status: 400 }
+    );
+  } catch (error: any) {
+    console.error('❌ [CLOUD RECORDING API] Error:', error);
+    return NextResponse.json(
+      { error: error.message || 'Internal server error' },
+      { status: 500 }
+    );
+  }
+}
+

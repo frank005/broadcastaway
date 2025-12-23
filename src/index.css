@@ -1,0 +1,62 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --agora-blue: #099DFD;
+}
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background-color: #F5F7F9;
+  color: #002766;
+}
+
+code {
+  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
+    monospace;
+}
+
+.agora-btn {
+  @apply px-4 py-2 rounded-lg font-medium transition-all duration-200;
+}
+
+.agora-btn-primary {
+  @apply bg-agora-blue text-white hover:bg-blue-600 disabled:bg-gray-300;
+}
+
+.agora-btn-secondary {
+  @apply bg-white text-agora-blue border border-agora-blue hover:bg-blue-50;
+}
+
+.agora-card {
+  @apply bg-white rounded-xl shadow-sm border border-gray-100 p-4;
+}
+
+.video-container {
+  @apply relative rounded-xl overflow-hidden bg-black aspect-video;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f1f1;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #888;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #555;
+}
+

@@ -1,0 +1,74 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --agora-blue: #099DFD;
+  --agora-dark: #1A1A1A;
+  --agora-grey: #6B7280;
+  --agora-light: #F9FAFB;
+}
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Agora-themed components */
+.agora-btn {
+  @apply px-6 py-2 rounded-lg font-medium transition-all duration-200;
+}
+
+.agora-btn-primary {
+  @apply bg-agora-blue text-white hover:bg-blue-600 active:bg-blue-700;
+}
+
+.agora-btn-secondary {
+  @apply bg-gray-200 text-agora-dark hover:bg-gray-300 active:bg-gray-400;
+}
+
+.agora-card {
+  @apply bg-white rounded-xl shadow-lg border border-gray-100;
+}
+
+/* Agora color utilities */
+.bg-agora-blue {
+  background-color: #099DFD;
+}
+
+.text-agora-blue {
+  color: #099DFD;
+}
+
+.bg-agora-dark {
+  background-color: #1A1A1A;
+}
+
+.text-agora-dark {
+  color: #1A1A1A;
+}
+
+.text-agora-grey {
+  color: #6B7280;
+}
+
+.bg-agora-light {
+  background-color: #F9FAFB;
+}
+
+.bg-agora-error {
+  background-color: #FF4D4F;
+}
+
+.bg-agora-warning {
+  background-color: #FAAD14;
+}
+
+.text-agora-warning {
+  color: #FAAD14;
+}
+
