@@ -179,7 +179,9 @@ export async function POST(request: NextRequest) {
         const fileNamePrefix = buildFileNamePrefix(process.env.RECORDING_WEB_STORAGE_FILE_NAME_PREFIX);
 
         // Build the webpage URL - it should automatically join as audience
-        const webpageUrl = body.webpageUrl || `${request.nextUrl.origin}/watch/${channelName}?name=Recording&uid=${recordingUid}&token=${token}`;
+        // Use environment variable for recording URL, fallback to Netlify URL, then request origin
+        const recordingBaseUrl = process.env.RECORDING_WEBPAGE_URL || 'https://broadcastaway.netlify.app';
+        const webpageUrl = body.webpageUrl || `${recordingBaseUrl}/watch/${channelName}?name=Recording&uid=${recordingUid}&token=${token}`;
 
         startBody = {
           cname: channelName,

@@ -1879,7 +1879,9 @@ function BroadcastPageContent() {
       if (recordingWebpage) {
         toast.loading('Starting webpage recording...', { id: 'recording-webpage' });
         const acquireRes = await agoraService.acquireRecordingResource(channelName, 'web');
-        const webpageUrl = `${window.location.origin}/watch/${channelName}?name=Recording&uid=${process.env.NEXT_PUBLIC_RECORDING_WEBPAGE_UID || '8888888'}`;
+        // Use environment variable for recording URL, fallback to Netlify URL, then current origin
+        const recordingBaseUrl = process.env.NEXT_PUBLIC_RECORDING_WEBPAGE_URL || 'https://broadcastaway.netlify.app';
+        const webpageUrl = `${recordingBaseUrl}/watch/${channelName}?name=Recording&uid=${process.env.NEXT_PUBLIC_RECORDING_WEBPAGE_UID || '8888888'}`;
         // @ts-ignore - webpageUrl is optional string parameter
         const startRes = await agoraService.startCloudRecording(channelName, 'web', acquireRes.resourceId, webpageUrl);
         sessions.webpage = {
