@@ -229,7 +229,7 @@ export async function POST(request: NextRequest) {
 
       if (!response.ok) {
         // Try to parse error response, but handle empty responses
-        let errorData = {};
+        let errorData: any = {};
         try {
           const text = await response.text();
           if (text) {
