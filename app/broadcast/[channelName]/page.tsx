@@ -5,11 +5,12 @@ import { useParams, useSearchParams, useRouter } from 'next/navigation';
 import { 
   Mic, MicOff, Video, VideoOff, ScreenShare, PhoneOff, 
   Users, Settings, Share2, Rocket, Download, Server, Bot, Play, Pause,
-  Check, X, RefreshCw, Upload, Clock, Copy, HelpCircle, User, BarChart3, Circle, MoreVertical, Image, Palette, Sparkles
+  Check, X, RefreshCw, Upload, Clock, Copy, HelpCircle, User, BarChart3, Circle, MoreVertical, Image, Palette, Sparkles, Languages
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import agoraService from '../../../src/services/agoraService';
 import VideoPlayer from '../../components/VideoPlayer';
+import { SOURCE_LANGUAGES, TARGET_LANGUAGES } from '../../utils/sttLanguages';
 
 function BroadcastPageContent() {
   const params = useParams();
@@ -136,6 +137,25 @@ function BroadcastPageContent() {
     webpage?: { m3u8?: string; mp4?: string };
   }>({});
   const [showRecordingLinksModal, setShowRecordingLinksModal] = useState(false);
+
+  // STT (Speech-to-Text) State
+  const [showSTTModal, setShowSTTModal] = useState(false);
+  const [isSTTRunning, setIsSTTRunning] = useState(false);
+  const [sttAgentId, setSttAgentId] = useState<string | null>(null);
+  const [sttConfig, setSttConfig] = useState<{
+    languages: string[];
+    translateConfig?: {
+      enable: boolean;
+      languages: Array<{ source: string; target: string[] }>;
+    };
+  }>({
+    languages: ['en-US']
+  });
+  const [sttTranscriptions, setSttTranscriptions] = useState<Map<number, { text: string; language: string; timestamp: Date }>>(new Map());
+  // Store translations per user - key is uid, value is map of targetLang -> translation
+  const [sttTranslations, setSttTranslations] = useState<Map<number, Map<string, { text: string; sourceLang: string; targetLang: string; timestamp: Date }>>>(new Map());
+  // Language selection for each user (uid -> { transcriptionLang: string, translationLang: string })
+  const [sttUserLanguageSelections, setSttUserLanguageSelections] = useState<Map<number, { transcriptionLang: string; translationLang?: string }>>(new Map());
 
   // Virtual Background State
   const [showVirtualBgModal, setShowVirtualBgModal] = useState(false);
@@ -294,6 +314,20 @@ function BroadcastPageContent() {
           const displayName = user.rtmUserId || `User-${user.uid}`;
           user.displayName = displayName;
           setRemoteUsers(prev => [...prev.filter(u => u.uid !== user.uid), user]);
+          
+          // Initialize language selection for new user if STT is running
+          if (isSTTRunning && sttConfig.languages.length > 0) {
+            setSttUserLanguageSelections(prev => {
+              const newMap = new Map(prev);
+              if (!newMap.has(user.uid)) {
+                newMap.set(user.uid, { transcriptionLang: sttConfig.languages[0] || 'en-US' });
+                // Subscribe to default language
+                agoraService.subscribeToSTTLanguages(user.uid, [sttConfig.languages[0] || 'en-US'], new Map());
+              }
+              return newMap;
+            });
+          }
+          
           console.log('👤 [PAGE] User published:', { uid: user.uid, displayName, hasVideo: !!user.videoTrack });
         }
       };
@@ -309,6 +343,34 @@ function BroadcastPageContent() {
             return newStats;
           });
         }
+      };
+
+      // STT Callbacks
+      agoraService.onTranscriptionReceived = (uid: number, text: string, language: string) => {
+        if (!isMounted) return;
+        console.log('📝 [PAGE] Transcription received:', { uid, text, language });
+        // Store transcription - always store it, let the UI filter by language selection
+        setSttTranscriptions(prev => {
+          const newMap = new Map(prev);
+          newMap.set(uid, { text, language, timestamp: new Date() });
+          console.log('📝 [PAGE] Stored transcription for UID:', uid, 'Total transcriptions:', newMap.size, 'All UIDs:', Array.from(newMap.keys()));
+          return newMap;
+        });
+      };
+
+      agoraService.onTranslationReceived = (uid: number, text: string, sourceLang: string, targetLang: string) => {
+        if (!isMounted) return;
+        console.log('🌐 [PAGE] Translation received:', { uid, text, sourceLang, targetLang });
+        // Store translation - store all translations per user, keyed by targetLang
+        // The UI will filter to show only the one matching the user's selected translation language
+        setSttTranslations(prev => {
+          const newMap = new Map(prev);
+          const userTranslations = newMap.get(uid) || new Map();
+          userTranslations.set(targetLang, { text, sourceLang, targetLang, timestamp: new Date() });
+          newMap.set(uid, userTranslations);
+          console.log('🌐 [PAGE] Stored translation for UID:', uid, 'Target:', targetLang, 'User has', userTranslations.size, 'translation languages');
+          return newMap;
+        });
       };
 
       agoraService.onDemoted = (userId: string) => {
@@ -1865,6 +1927,97 @@ function BroadcastPageContent() {
     }
   };
 
+  // STT Handlers
+  const handleStartSTT = async () => {
+    try {
+      if (sttConfig.languages.length === 0) {
+        toast.error('Please select at least one transcription language');
+        return;
+      }
+
+      toast.loading('Starting STT...', { id: 'stt-start' });
+      
+      const config = {
+        name: channelName,
+        languages: sttConfig.languages,
+        translateConfig: sttConfig.translateConfig?.enable ? {
+          enable: true,
+          forceTranslateInterval: 5,
+          languages: sttConfig.translateConfig.languages
+        } : undefined
+      };
+
+      const response = await agoraService.startSTT(config);
+      
+      if (response.agent_id) {
+        setSttAgentId(response.agent_id);
+        setIsSTTRunning(true);
+        setShowSTTModal(false);
+        
+        // Initialize language selections for all current users
+        const initialSelections = new Map<number, { transcriptionLang: string; translationLang?: string }>();
+        remoteUsers.forEach(user => {
+          initialSelections.set(user.uid, { transcriptionLang: sttConfig.languages[0] || 'en-US' });
+        });
+        // Also set for local user (host) - use actual RTC UID, not hashed username
+        const localRtcUid = (agoraService.rtcClient as any)?._uid || -1;
+        if (localRtcUid > 0) {
+          initialSelections.set(localRtcUid, { transcriptionLang: sttConfig.languages[0] || 'en-US' });
+        }
+        setSttUserLanguageSelections(initialSelections);
+        
+        // Subscribe all users to their default languages
+        initialSelections.forEach((selection, uid) => {
+          const translationMap = new Map();
+          if (selection.translationLang && sttConfig.translateConfig?.enable) {
+            translationMap.set(selection.transcriptionLang, [selection.translationLang]);
+          }
+          agoraService.subscribeToSTTLanguages(uid, [selection.transcriptionLang], translationMap);
+        });
+        
+        // Broadcast STT config to all users via RTM
+        if (agoraService.rtmChannel && agoraService.rtmLoggedIn) {
+          try {
+            await agoraService.rtmChannel.publishMessage(
+              JSON.stringify({
+                type: 'STT_CONFIG',
+                languages: sttConfig.languages,
+                translateConfig: sttConfig.translateConfig?.enable ? {
+                  languages: sttConfig.translateConfig.languages
+                } : undefined
+              })
+            );
+          } catch (err) {
+            console.error('Failed to broadcast STT config:', err);
+          }
+        }
+        
+        toast.success('STT started successfully!', { id: 'stt-start' });
+      } else {
+        throw new Error('No agent ID received');
+      }
+    } catch (err: any) {
+      toast.error(`Failed to start STT: ${err.message}`, { id: 'stt-start' });
+      console.error('STT start error:', err);
+    }
+  };
+
+  const handleStopSTT = async () => {
+    try {
+      toast.loading('Stopping STT...', { id: 'stt-stop' });
+      await agoraService.stopSTT();
+      setIsSTTRunning(false);
+      setSttAgentId(null);
+      setSttTranscriptions(new Map());
+      setSttTranslations(new Map());
+      setSttTranslations(new Map());
+      toast.success('STT stopped', { id: 'stt-stop' });
+    } catch (err: any) {
+      toast.error(`Failed to stop STT: ${err.message}`, { id: 'stt-stop' });
+      console.error('STT stop error:', err);
+    }
+  };
+
   // Cloud Recording Handlers
   const handleStartRecording = async () => {
     if (!recordingComposite && !recordingWebpage) {
@@ -2418,6 +2571,131 @@ function BroadcastPageContent() {
                       } : undefined;
                     })()}
                   />
+                  {/* STT Language Selection and Transcription Overlay for Host (only show when STT is running) */}
+                  {isSTTRunning && sttConfig.languages.length > 0 && (() => {
+                    const localRtcUid = (agoraService.rtcClient as any)?._uid || -1;
+                    const userLangSelection = sttUserLanguageSelections.get(localRtcUid) || { transcriptionLang: sttConfig.languages[0] || 'en-US' };
+                    const transcription = sttTranscriptions.get(localRtcUid);
+                    const userTranslations = sttTranslations.get(localRtcUid);
+                    const translation = userLangSelection.translationLang && userTranslations 
+                      ? userTranslations.get(userLangSelection.translationLang) 
+                      : undefined;
+                    
+                    return (
+                      <>
+                        {/* Language Selection Controls - Top Left */}
+                        <div className="absolute top-2 left-2 z-30 bg-black/90 rounded-lg p-2 space-y-2 min-w-[180px] border border-gray-600">
+                          <div>
+                            <label className="text-xs text-gray-300 mb-1 block font-semibold">Transcription:</label>
+                            <select
+                              value={userLangSelection.transcriptionLang}
+                              onChange={(e) => {
+                                const newTranscriptionLang = e.target.value;
+                                setSttUserLanguageSelections(prev => {
+                                  const newMap = new Map(prev);
+                                  newMap.set(localRtcUid, { ...userLangSelection, transcriptionLang: newTranscriptionLang });
+                                  return newMap;
+                                });
+                                // Clear old transcriptions/translations for this user
+                                setSttTranscriptions(prev => {
+                                  const newMap = new Map(prev);
+                                  newMap.delete(localRtcUid);
+                                  return newMap;
+                                });
+                                setSttTranslations(prev => {
+                                  const newMap = new Map(prev);
+                                  newMap.delete(localRtcUid);
+                                  return newMap;
+                                });
+                                // Update subscription in agoraService
+                                const translationMap = new Map();
+                                if (userLangSelection.translationLang && sttConfig.translateConfig?.enable) {
+                                  // Check if translation is still valid for new transcription language
+                                  const translationPair = userLangSelection.translationLang ? sttConfig.translateConfig.languages.find(
+                                    p => p.source === newTranscriptionLang && p.target.includes(userLangSelection.translationLang!)
+                                  ) : null;
+                                  if (translationPair) {
+                                    translationMap.set(newTranscriptionLang, [userLangSelection.translationLang]);
+                                  }
+                                }
+                                agoraService.subscribeToSTTLanguages(localRtcUid, [newTranscriptionLang], translationMap);
+                              }}
+                              className="w-full bg-gray-800 border border-gray-700 rounded px-2 py-1.5 text-xs text-white hover:bg-gray-700"
+                            >
+                              {sttConfig.languages.map(lang => {
+                                const langName = SOURCE_LANGUAGES.find(l => l.code === lang)?.name || lang;
+                                return (
+                                  <option key={lang} value={lang}>{langName}</option>
+                                );
+                              })}
+                            </select>
+                          </div>
+                          {sttConfig.translateConfig?.enable && (
+                            <div>
+                              <label className="text-xs text-gray-300 mb-1 block font-semibold">Translation:</label>
+                              <select
+                                value={userLangSelection.translationLang || ''}
+                                  onChange={(e) => {
+                                    const selectedLang = e.target.value;
+                                    setSttUserLanguageSelections(prev => {
+                                      const newMap = new Map(prev);
+                                      newMap.set(localRtcUid, { ...userLangSelection, translationLang: selectedLang });
+                                      return newMap;
+                                    });
+                                    // Clear old translations for this user when changing translation language
+                                    setSttTranslations(prev => {
+                                      const newMap = new Map(prev);
+                                      const userTranslations = newMap.get(localRtcUid);
+                                      if (userTranslations) {
+                                        userTranslations.clear();
+                                        newMap.set(localRtcUid, userTranslations);
+                                      }
+                                      return newMap;
+                                    });
+                                    // Find the translation pair for this user's selected transcription language
+                                    const translationPair = sttConfig.translateConfig?.languages.find(
+                                      p => p.source === userLangSelection.transcriptionLang
+                                    );
+                                    if (translationPair && selectedLang) {
+                                      const translationMap = new Map();
+                                      translationMap.set(userLangSelection.transcriptionLang, [selectedLang]);
+                                      agoraService.subscribeToSTTLanguages(localRtcUid, [userLangSelection.transcriptionLang], translationMap);
+                                    } else if (!selectedLang) {
+                                      // Clear translation subscription if "None" is selected
+                                      agoraService.subscribeToSTTLanguages(localRtcUid, [userLangSelection.transcriptionLang], new Map());
+                                    }
+                                  }}
+                                className="w-full bg-gray-800 border border-gray-700 rounded px-2 py-1.5 text-xs text-white hover:bg-gray-700"
+                              >
+                                <option value="">None</option>
+                                {sttConfig.translateConfig.languages
+                                  .find(p => p.source === userLangSelection.transcriptionLang)
+                                  ?.target.map(targetLang => {
+                                    const langName = TARGET_LANGUAGES.find(l => l.code === targetLang)?.name || targetLang;
+                                    return (
+                                      <option key={targetLang} value={targetLang}>{langName}</option>
+                                    );
+                                  })}
+                              </select>
+                            </div>
+                          )}
+                        </div>
+                        {/* Transcription/Translation Overlay on Video - Bottom */}
+                        <div className="absolute bottom-2 left-2 right-2 z-30 bg-black/50 backdrop-blur-sm rounded-lg p-3 border border-gray-600/50 max-w-full">
+                          {transcription && transcription.language === userLangSelection.transcriptionLang ? (
+                            <>
+                              <div className="text-base text-white font-medium mb-1 break-words">{transcription.text}</div>
+                              {translation && translation.targetLang === userLangSelection.translationLang && (
+                                <div className="text-sm text-gray-300 italic break-words">{translation.text}</div>
+                              )}
+                            </>
+                          ) : (
+                            <div className="text-xs text-gray-500 italic">Waiting for transcription...</div>
+                          )}
+                        </div>
+                      </>
+                    );
+                  })()}
                   {/* Local Statistics Overlay - Comprehensive stats like rtc-signaling */}
                   {showStats && (() => {
                     const localUid = (agoraService.rtcClient as any)?._uid || -1;
@@ -2525,6 +2803,13 @@ function BroadcastPageContent() {
                 return null;
               }
               const userStats = statsData.get(user.uid);
+              const userLangSelection = sttUserLanguageSelections.get(user.uid) || { transcriptionLang: sttConfig.languages[0] || 'en-US' };
+              const transcription = sttTranscriptions.get(user.uid);
+              const userTranslations = sttTranslations.get(user.uid);
+              const translation = userLangSelection.translationLang && userTranslations 
+                ? userTranslations.get(userLangSelection.translationLang) 
+                : undefined;
+              
               return (
                 <div key={user.uid} className="relative group">
                   <VideoPlayer 
@@ -2537,6 +2822,103 @@ function BroadcastPageContent() {
                       bitrate: userStats.bitrate
                     } : undefined}
                   />
+                  {/* STT Language Selection and Transcription Overlay (only show when STT is running) */}
+                  {isSTTRunning && sttConfig.languages.length > 0 && (
+                    <>
+                      {/* Language Selection Controls - Top Left */}
+                      <div className="absolute top-2 left-2 z-30 bg-black/90 rounded-lg p-2 space-y-2 min-w-[180px] border border-gray-600">
+                        <div>
+                          <label className="text-xs text-gray-300 mb-1 block font-semibold">Transcription:</label>
+                          <select
+                            value={userLangSelection.transcriptionLang}
+                            onChange={(e) => {
+                              setSttUserLanguageSelections(prev => {
+                                const newMap = new Map(prev);
+                                newMap.set(user.uid, { ...userLangSelection, transcriptionLang: e.target.value });
+                                return newMap;
+                              });
+                              // Update subscription in agoraService
+                              const translationMap = new Map();
+                              if (userLangSelection.translationLang && sttConfig.translateConfig?.enable) {
+                                translationMap.set(e.target.value, [userLangSelection.translationLang]);
+                              }
+                              agoraService.subscribeToSTTLanguages(user.uid, [e.target.value], translationMap);
+                            }}
+                            className="w-full bg-gray-800 border border-gray-700 rounded px-2 py-1.5 text-xs text-white hover:bg-gray-700"
+                          >
+                            {sttConfig.languages.map(lang => {
+                              const langName = SOURCE_LANGUAGES.find(l => l.code === lang)?.name || lang;
+                              return (
+                                <option key={lang} value={lang}>{langName}</option>
+                              );
+                            })}
+                          </select>
+                        </div>
+                        {sttConfig.translateConfig?.enable && (
+                          <div>
+                            <label className="text-xs text-gray-300 mb-1 block font-semibold">Translation:</label>
+                            <select
+                              value={userLangSelection.translationLang || ''}
+                              onChange={(e) => {
+                                const selectedLang = e.target.value;
+                                setSttUserLanguageSelections(prev => {
+                                  const newMap = new Map(prev);
+                                  newMap.set(user.uid, { ...userLangSelection, translationLang: selectedLang });
+                                  return newMap;
+                                });
+                                // Clear old translations for this user when changing translation language
+                                setSttTranslations(prev => {
+                                  const newMap = new Map(prev);
+                                  const userTranslations = newMap.get(user.uid);
+                                  if (userTranslations) {
+                                    userTranslations.clear();
+                                    newMap.set(user.uid, userTranslations);
+                                  }
+                                  return newMap;
+                                });
+                                // Find the translation pair for this user's selected transcription language
+                                const translationPair = sttConfig.translateConfig?.languages.find(
+                                  p => p.source === userLangSelection.transcriptionLang
+                                );
+                                if (translationPair && selectedLang) {
+                                  const translationMap = new Map();
+                                  translationMap.set(userLangSelection.transcriptionLang, [selectedLang]);
+                                  agoraService.subscribeToSTTLanguages(user.uid, [userLangSelection.transcriptionLang], translationMap);
+                                } else if (!selectedLang) {
+                                  // Clear translation subscription if "None" is selected
+                                  agoraService.subscribeToSTTLanguages(user.uid, [userLangSelection.transcriptionLang], new Map());
+                                }
+                              }}
+                              className="w-full bg-gray-800 border border-gray-700 rounded px-2 py-1.5 text-xs text-white hover:bg-gray-700"
+                            >
+                              <option value="">None</option>
+                              {sttConfig.translateConfig.languages
+                                .find(p => p.source === userLangSelection.transcriptionLang)
+                                ?.target.map(targetLang => {
+                                  const langName = TARGET_LANGUAGES.find(l => l.code === targetLang)?.name || targetLang;
+                                  return (
+                                    <option key={targetLang} value={targetLang}>{langName}</option>
+                                  );
+                                })}
+                            </select>
+                          </div>
+                        )}
+                      </div>
+                      {/* Transcription/Translation Overlay on Video - Bottom */}
+                      <div className="absolute bottom-2 left-2 right-2 z-30 bg-black/50 backdrop-blur-sm rounded-lg p-3 border border-gray-600/50 max-w-full">
+                        {transcription && transcription.language === userLangSelection.transcriptionLang ? (
+                          <>
+                            <div className="text-base text-white font-medium mb-1 break-words">{transcription.text}</div>
+                            {translation && translation.targetLang === userLangSelection.translationLang && (
+                              <div className="text-sm text-gray-300 italic break-words">{translation.text}</div>
+                            )}
+                          </>
+                        ) : (
+                          <div className="text-xs text-gray-500 italic">Waiting for transcription...</div>
+                        )}
+                      </div>
+                    </>
+                  )}
                   {/* Statistics Overlay - Comprehensive stats like rtc-signaling */}
                   {showStats && userStats && (
                     <div className="absolute bottom-0 left-0 right-0 bg-black/90 backdrop-blur-sm p-3 text-xs text-white max-h-[200px] overflow-y-auto z-20">
@@ -2642,6 +3024,16 @@ function BroadcastPageContent() {
                 <MoreVertical size={24} />
               </button>
             )}
+            {/* STT Button */}
+            <button
+              onClick={() => isSTTRunning ? handleStopSTT() : setShowSTTModal(true)}
+              className={`p-4 rounded-full transition-all ${
+                isSTTRunning ? 'bg-green-600 text-white' : 'bg-gray-700 text-white hover:bg-gray-600'
+              }`}
+              title={isSTTRunning ? "Stop STT" : "Start STT"}
+            >
+              <Languages size={24} className={isSTTRunning ? 'fill-white text-white' : ''} />
+            </button>
           </div>
         </div>
 
@@ -2727,6 +3119,7 @@ function BroadcastPageContent() {
                 </div>
               </div>
             )}
+
 
             {activeTab === 'participants' && (
               <div className="space-y-6">
@@ -3781,6 +4174,265 @@ function BroadcastPageContent() {
                     className="flex-1 bg-agora-blue hover:bg-blue-600 disabled:bg-gray-700 disabled:cursor-not-allowed px-4 py-2 rounded-lg font-bold"
                   >
                     Start Recording
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* STT Modal */}
+        {showSTTModal && (
+          <div className="absolute inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center">
+            <div className="bg-gray-900 border border-gray-700 rounded-2xl p-6 max-w-4xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="text-xl font-bold">Speech-to-Text Configuration</h2>
+                <button 
+                  onClick={() => setShowSTTModal(false)}
+                  className="text-gray-400 hover:text-white text-2xl"
+                >
+                  ×
+                </button>
+              </div>
+              
+              <div className="space-y-6">
+                {/* Transcription Languages */}
+                <div>
+                  <label className="block text-sm font-semibold mb-2">
+                    Transcription Languages (up to 4)
+                  </label>
+                  <div className="space-y-2">
+                    {sttConfig.languages.map((lang, index) => (
+                      <div key={index} className="flex items-center gap-2">
+                        <select
+                          value={lang}
+                          onChange={(e) => {
+                            const newLangs = [...sttConfig.languages];
+                            newLangs[index] = e.target.value;
+                            setSttConfig({ ...sttConfig, languages: newLangs });
+                          }}
+                          className="flex-1 bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white"
+                        >
+                          {SOURCE_LANGUAGES.map(l => (
+                            <option key={l.code} value={l.code}>{l.name}</option>
+                          ))}
+                        </select>
+                        {sttConfig.languages.length > 1 && (
+                          <button
+                            onClick={() => {
+                              const newLangs = sttConfig.languages.filter((_, i) => i !== index);
+                              setSttConfig({ ...sttConfig, languages: newLangs });
+                            }}
+                            className="text-red-500 hover:text-red-400 px-2"
+                          >
+                            ×
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                    {sttConfig.languages.length < 4 && (
+                      <button
+                        onClick={() => {
+                          // Find first available language that isn't already selected
+                          const availableLang = SOURCE_LANGUAGES.find(l => !sttConfig.languages.includes(l.code));
+                          setSttConfig({
+                            ...sttConfig,
+                            languages: [...sttConfig.languages, availableLang?.code || 'en-US']
+                          });
+                        }}
+                        className="text-sm text-agora-blue hover:underline"
+                      >
+                        + Add Language
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Translation Configuration */}
+                <div>
+                  <label className="flex items-center gap-2 mb-2">
+                    <input
+                      type="checkbox"
+                      checked={sttConfig.translateConfig?.enable || false}
+                      onChange={(e) => {
+                        setSttConfig({
+                          ...sttConfig,
+                          translateConfig: e.target.checked ? {
+                            enable: true,
+                            languages: []
+                          } : undefined
+                        });
+                      }}
+                      className="w-4 h-4"
+                    />
+                    <span className="text-sm font-semibold">Enable Translation</span>
+                  </label>
+                  
+                  {sttConfig.translateConfig?.enable && (
+                    <div className="mt-3 space-y-3 pl-6 border-l-2 border-gray-700">
+                      {sttConfig.translateConfig.languages.map((pair, index) => {
+                        // Get available transcription languages that aren't already used in other pairs
+                        const usedSources = sttConfig.translateConfig!.languages.map(p => p.source);
+                        const availableSources = sttConfig.languages.filter(lang => 
+                          lang === pair.source || !usedSources.includes(lang)
+                        );
+                        
+                        return (
+                          <div key={index} className="bg-gray-800 p-3 rounded">
+                            <div className="flex items-center justify-between mb-2">
+                              <div className="flex-1">
+                                <label className="text-xs text-gray-400 mb-1 block">Source Language (from transcription languages):</label>
+                                <select
+                                  value={pair.source}
+                                  onChange={(e) => {
+                                    const newPairs = [...sttConfig.translateConfig!.languages];
+                                    newPairs[index].source = e.target.value;
+                                    setSttConfig({
+                                      ...sttConfig,
+                                      translateConfig: {
+                                        ...sttConfig.translateConfig!,
+                                        languages: newPairs
+                                      }
+                                    });
+                                  }}
+                                  className="w-full bg-gray-700 border border-gray-600 rounded px-2 py-1 text-sm text-white"
+                                >
+                                  {availableSources.map(lang => {
+                                    const langName = SOURCE_LANGUAGES.find(l => l.code === lang)?.name || lang;
+                                    return (
+                                      <option key={lang} value={lang}>{langName}</option>
+                                    );
+                                  })}
+                                </select>
+                              </div>
+                              <button
+                                onClick={() => {
+                                  const newPairs = sttConfig.translateConfig!.languages.filter((_, i) => i !== index);
+                                  setSttConfig({
+                                    ...sttConfig,
+                                    translateConfig: {
+                                      ...sttConfig.translateConfig!,
+                                      languages: newPairs
+                                    }
+                                  });
+                                }}
+                                className="text-red-500 hover:text-red-400 text-sm ml-2"
+                              >
+                                Remove
+                              </button>
+                            </div>
+                            <div className="space-y-2">
+                              <label className="text-xs text-gray-400">Target Languages:</label>
+                              {pair.target.map((target, tIndex) => (
+                                <div key={tIndex} className="flex items-center gap-2">
+                                  <select
+                                    value={target}
+                                    onChange={(e) => {
+                                      const newPairs = [...sttConfig.translateConfig!.languages];
+                                      newPairs[index].target[tIndex] = e.target.value;
+                                      setSttConfig({
+                                        ...sttConfig,
+                                        translateConfig: {
+                                          ...sttConfig.translateConfig!,
+                                          languages: newPairs
+                                        }
+                                      });
+                                    }}
+                                    className="flex-1 bg-gray-700 border border-gray-600 rounded px-2 py-1 text-sm text-white"
+                                  >
+                                    {TARGET_LANGUAGES.map(l => (
+                                      <option key={l.code} value={l.code}>{l.name}</option>
+                                    ))}
+                                  </select>
+                                  {pair.target.length > 1 && (
+                                    <button
+                                      onClick={() => {
+                                        const newPairs = [...sttConfig.translateConfig!.languages];
+                                        newPairs[index].target = newPairs[index].target.filter((_, i) => i !== tIndex);
+                                        setSttConfig({
+                                          ...sttConfig,
+                                          translateConfig: {
+                                            ...sttConfig.translateConfig!,
+                                            languages: newPairs
+                                          }
+                                        });
+                                      }}
+                                      className="text-red-500 hover:text-red-400"
+                                    >
+                                      ×
+                                    </button>
+                                  )}
+                                </div>
+                              ))}
+                              <button
+                                onClick={() => {
+                                  const newPairs = [...sttConfig.translateConfig!.languages];
+                                  newPairs[index].target.push('en-US');
+                                  setSttConfig({
+                                    ...sttConfig,
+                                    translateConfig: {
+                                      ...sttConfig.translateConfig!,
+                                      languages: newPairs
+                                    }
+                                  });
+                                }}
+                                className="text-xs text-agora-blue hover:underline"
+                              >
+                                + Add Target Language
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                      {sttConfig.translateConfig.languages.length < sttConfig.languages.length && (
+                        <button
+                          onClick={() => {
+                            if (sttConfig.translateConfig && sttConfig.languages.length > 0) {
+                              // Find first transcription language that isn't already used
+                              const usedSources = sttConfig.translateConfig.languages.map(p => p.source);
+                              const availableSource = sttConfig.languages.find(lang => !usedSources.includes(lang)) || sttConfig.languages[0];
+                              
+                              const newPairs = [...sttConfig.translateConfig.languages, {
+                                source: availableSource,
+                                target: ['en-US']
+                              }];
+                              setSttConfig({
+                                ...sttConfig,
+                                translateConfig: {
+                                  ...sttConfig.translateConfig,
+                                  languages: newPairs
+                                }
+                              });
+                            }
+                          }}
+                          className="text-sm text-agora-blue hover:underline"
+                        >
+                          + Add Translation Pair
+                        </button>
+                      )}
+                      {sttConfig.translateConfig.languages.length >= sttConfig.languages.length && (
+                        <p className="text-xs text-gray-500 italic">
+                          Maximum {sttConfig.languages.length} translation pair{sttConfig.languages.length !== 1 ? 's' : ''} allowed (one per transcription language)
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* Action Buttons */}
+                <div className="flex space-x-3 pt-4 border-t border-gray-700">
+                  <button
+                    onClick={() => setShowSTTModal(false)}
+                    className="flex-1 bg-gray-700 hover:bg-gray-600 px-4 py-2 rounded-lg font-bold"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleStartSTT}
+                    disabled={sttConfig.languages.length === 0}
+                    className="flex-1 bg-agora-blue hover:bg-blue-600 disabled:bg-gray-700 disabled:cursor-not-allowed px-4 py-2 rounded-lg font-bold"
+                  >
+                    Start STT
                   </button>
                 </div>
               </div>

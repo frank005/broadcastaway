@@ -98,6 +98,12 @@ class AgoraService {
     this.onKicked = null; // Callback when user is kicked/banned from channel
     this.videoQuality = '720p'; // Video quality setting: '480p', '720p', '1080p'
     this.audioQuality = '48kHz'; // Audio quality setting: '16kHz', '24kHz', '48kHz'
+    // STT (Speech-to-Text) state
+    this.sttAgentId = null; // Current STT agent ID
+    this.sttConfig = null; // Current STT configuration
+    this.onTranscriptionReceived = null; // Callback: (uid, text, language) => void
+    this.onTranslationReceived = null; // Callback: (uid, text, sourceLang, targetLang) => void
+    this.sttSubscribedLanguages = new Map(); // uid -> { transcription: string[], translation: Map<sourceLang, targetLang[]> }
   }
 
   // Hash username to numeric UID for RTC (RTM can use string, RTC needs number)
@@ -570,6 +576,134 @@ class AgoraService {
             this.onKicked('You have been removed from the channel');
           }
         }
+      }
+    });
+
+    // Listen for stream messages (STT transcription/translation)
+    this.rtcClient.on('stream-message', async (uid, data) => {
+      try {
+        // Check if protobuf is available - use $protobufRoot from STT demo
+        // Wait a bit if protobuf isn't loaded yet (scripts might still be loading)
+        if (!window.protobuf) {
+          console.warn('⚠️ [STT] Protobuf library not loaded, cannot decode STT messages');
+          return;
+        }
+        
+        if (!window.$protobufRoot && !window.protobufRoot) {
+          console.warn('⚠️ [STT] Protobuf root not loaded, cannot decode STT messages');
+          console.warn('⚠️ [STT] Available:', { 
+            hasProtobuf: !!window.protobuf, 
+            hasDollarRoot: !!window.$protobufRoot, 
+            hasRoot: !!window.protobufRoot 
+          });
+          return;
+        }
+
+        // Use $protobufRoot from STT demo (compatibility with both)
+        const protobufRoot = window.$protobufRoot || window.protobufRoot;
+        if (!protobufRoot) {
+          console.warn('⚠️ [STT] Protobuf root is null');
+          return;
+        }
+        
+        const Text = protobufRoot.lookup('agora.audio2text.Text');
+        if (!Text) {
+          console.warn('⚠️ [STT] Protobuf Text type not found');
+          console.warn('⚠️ [STT] Available types:', protobufRoot ? Object.keys(protobufRoot.nested || {}) : 'no root');
+          return;
+        }
+
+        const msg = Text.decode(data);
+        // IMPORTANT: The 'uid' parameter is the STT bot's UID (sender), but msg.uid is the actual user's UID
+        const actualUserUid = msg.uid || uid;
+        console.log('🎤 [STT] Stream message received from bot UID:', uid, 'Actual user UID:', actualUserUid, 'Type:', msg.data_type);
+
+        if (msg.data_type === 'transcribe' && msg.words && msg.words.length) {
+          const text = msg.words.map(word => word.text || '').join('');
+          
+          // Get the language from user's subscription (use actualUserUid, not bot UID)
+          const userSubs = this.sttSubscribedLanguages.get(actualUserUid);
+          let language = null;
+          
+          if (userSubs && userSubs.transcription.length > 0) {
+            // Use the subscribed transcription language
+            language = userSubs.transcription[0];
+          } else {
+            // If no subscription, try to infer from available subscriptions
+            const allSubs = Array.from(this.sttSubscribedLanguages.values());
+            if (allSubs.length > 0 && allSubs[0].transcription.length > 0) {
+              language = allSubs[0].transcription[0];
+            }
+          }
+          
+          // If still no language, try to get from any active STT configuration
+          // This handles the case where transcriptions are coming but subscription isn't set up yet
+          if (!language) {
+            // Check if we have any subscriptions at all (for any user)
+            const allSubs = Array.from(this.sttSubscribedLanguages.values());
+            if (allSubs.length > 0) {
+              for (const sub of allSubs) {
+                if (sub.transcription.length > 0) {
+                  language = sub.transcription[0];
+                  console.log('⚠️ [STT] No subscription for UID:', actualUserUid, 'Using inferred language:', language);
+                  break;
+                }
+              }
+            }
+          }
+          
+          // If still no language, send with 'unknown' and let the UI handle it
+          // This allows the UI to auto-detect and set up the language
+          if (!language) {
+            language = 'unknown';
+            console.log('⚠️ [STT] No language subscription found for UID:', actualUserUid, 'Sending with unknown language for auto-detection');
+          }
+          
+          console.log('🎤 [STT] Transcription:', text, 'Language:', language, 'User UID:', actualUserUid, 'Has subscription:', !!userSubs);
+          
+          // Always send transcription if user has a subscription (or no subscription means show all)
+          // Also send if language matches or if no subscription exists (show all)
+          if (!userSubs || userSubs.transcription.length === 0 || userSubs.transcription.includes(language)) {
+            if (this.onTranscriptionReceived) {
+              console.log('🎤 [STT] Calling onTranscriptionReceived for User UID:', actualUserUid);
+              this.onTranscriptionReceived(actualUserUid, text, language);
+            } else {
+              console.warn('⚠️ [STT] onTranscriptionReceived callback not set');
+            }
+          } else {
+            console.log('⚠️ [STT] Transcription filtered - User UID:', actualUserUid, 'Language:', language, 'Subscribed languages:', userSubs.transcription);
+          }
+        } else if (msg.data_type === 'translate' && msg.trans && msg.trans.length) {
+          // Only send translations that match the user's subscription
+          const userSubs = this.sttSubscribedLanguages.get(actualUserUid);
+          const sourceLang = userSubs && userSubs.transcription.length > 0 
+            ? userSubs.transcription[0] 
+            : 'unknown';
+          
+          // Get subscribed translation languages for this user
+          const subscribedTargetLangs = userSubs && userSubs.translation 
+            ? Array.from(userSubs.translation.values()).flat()
+            : [];
+          
+          // Only send translations that match the user's subscription
+          for (const trans of msg.trans) {
+            const targetLang = trans.lang;
+            
+            // Only send if user is subscribed to this target language
+            if (subscribedTargetLangs.length === 0 || subscribedTargetLangs.includes(targetLang)) {
+              const text = trans.texts.join(''); // Join all texts to get complete translation
+              console.log('🌐 [STT] Translation:', text, 'Source:', sourceLang, 'Target:', targetLang, 'User UID:', actualUserUid);
+              
+              if (this.onTranslationReceived) {
+                this.onTranslationReceived(actualUserUid, text, sourceLang, targetLang);
+              }
+            } else {
+              console.log('🌐 [STT] Translation filtered - not subscribed to:', targetLang, 'Subscribed to:', subscribedTargetLangs);
+            }
+          }
+        }
+      } catch (error) {
+        console.error('❌ [STT] Error handling stream message:', error);
       }
     });
   }
@@ -2660,6 +2794,156 @@ class AgoraService {
       console.error('❌ [RECORDING] Stop error:', err);
       throw err;
     }
+  }
+
+  // STT (Speech-to-Text) Methods
+  async startSTT(config) {
+    try {
+      console.log('🎤 [STT] Starting STT with config:', config);
+      
+      const response = await fetch('/api/stt', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'start',
+          channelName: this.channelName,
+          config: {
+            ...config,
+            name: config.name || this.channelName
+          }
+        })
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to start STT');
+      }
+
+      const data = await response.json();
+      if (data.agent_id) {
+        this.sttAgentId = data.agent_id;
+        this.sttConfig = config;
+        console.log('✅ [STT] STT started with agent ID:', this.sttAgentId);
+      }
+      
+      return data;
+    } catch (err) {
+      console.error('❌ [STT] Start error:', err);
+      throw err;
+    }
+  }
+
+  async stopSTT() {
+    try {
+      if (!this.sttAgentId) {
+        throw new Error('No active STT session');
+      }
+
+      console.log('🎤 [STT] Stopping STT, agent ID:', this.sttAgentId);
+      
+      const response = await fetch('/api/stt', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'stop',
+          channelName: this.channelName,
+          agentId: this.sttAgentId
+        })
+      });
+
+      if (!response.ok) {
+        let error = {};
+        try {
+          const text = await response.text();
+          if (text) {
+            error = JSON.parse(text);
+          }
+        } catch (e) {
+          // If parsing fails, use empty object
+        }
+        throw new Error(error.error || 'Failed to stop STT');
+      }
+
+      // Check if response has content before parsing JSON
+      const text = await response.text();
+      let data = {};
+      if (text && text.trim()) {
+        try {
+          data = JSON.parse(text);
+        } catch (e) {
+          // If parsing fails, use empty object (empty response is valid)
+          data = { success: true };
+        }
+      } else {
+        // Empty response is valid - just return success
+        data = { success: true };
+      }
+      
+      this.sttAgentId = null;
+      this.sttConfig = null;
+      console.log('✅ [STT] STT stopped');
+      
+      return data;
+    } catch (err) {
+      console.error('❌ [STT] Stop error:', err);
+      throw err;
+    }
+  }
+
+  async updateSTT(updateMask, updateConfig) {
+    try {
+      if (!this.sttAgentId) {
+        throw new Error('No active STT session');
+      }
+
+      console.log('🎤 [STT] Updating STT, agent ID:', this.sttAgentId, 'Update mask:', updateMask);
+      
+      const response = await fetch('/api/stt', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'update',
+          channelName: this.channelName,
+          agentId: this.sttAgentId,
+          updateMask,
+          config: updateConfig
+        })
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to update STT');
+      }
+
+      const data = await response.json();
+      // Update local config if needed
+      if (updateConfig.translateConfig) {
+        this.sttConfig = { ...this.sttConfig, translateConfig: updateConfig.translateConfig };
+      }
+      
+      return data;
+    } catch (err) {
+      console.error('❌ [STT] Update error:', err);
+      throw err;
+    }
+  }
+
+  // Subscribe to transcription/translation languages for a specific user
+  subscribeToSTTLanguages(uid, transcriptionLanguages = [], translationMap = new Map()) {
+    this.sttSubscribedLanguages.set(uid, {
+      transcription: transcriptionLanguages,
+      translation: translationMap
+    });
+    console.log('🎤 [STT] Subscribed to languages for UID:', uid, {
+      transcription: transcriptionLanguages,
+      translation: Array.from(translationMap.entries())
+    });
+  }
+
+  // Unsubscribe from STT languages for a user
+  unsubscribeFromSTTLanguages(uid) {
+    this.sttSubscribedLanguages.delete(uid);
+    console.log('🎤 [STT] Unsubscribed from languages for UID:', uid);
   }
 }
 

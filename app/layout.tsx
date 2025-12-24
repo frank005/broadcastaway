@@ -22,6 +22,10 @@ export default function RootLayout({
         <script src="https://download.agora.io/sdk/release/AgoraRTC_N.js" async></script>
         <script src="https://cdn.jsdelivr.net/npm/agora-rtm-sdk@2.2.3/agora-rtm.js" async></script>
         <script src="https://agora-packages.s3.us-west-2.amazonaws.com/ext/vb-2-1-0/agora-extension-virtual-background.js" async></script>
+        {/* Protobuf for STT - using files from STT demo (load in order, not async) */}
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/protobufjs/6.11.3/protobuf.min.js"></script>
+        <script src="/proto/protobuf.min.js"></script>
+        <script src="/proto/index.js"></script>
       </head>
       <body className="min-h-screen bg-agora-light">
         <Navigation />
