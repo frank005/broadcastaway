@@ -2124,22 +2124,44 @@ function BroadcastPageContent() {
       // Clear from localStorage
       localStorage.removeItem(`castaway_recording_links_${channelName}`);
       
-      // Broadcast recording state to all users via RTM
-      if (agoraService.rtmChannel && agoraService.rtmLoggedIn) {
-        try {
-          const message = JSON.stringify({ type: 'RECORDING_STATE', isRecording: true });
-          console.log('📹 [HOST] Broadcasting RECORDING_STATE:', message);
-          await agoraService.rtmChannel.publishMessage(message);
-          console.log('📹 [HOST] RECORDING_STATE message sent successfully');
-        } catch (err) {
-          console.error('❌ [HOST] Failed to broadcast recording state:', err);
+      // Broadcast recording state to all users via RTM (with retry)
+      const broadcastRecordingState = async (retries = 3) => {
+        for (let i = 0; i < retries; i++) {
+          if (agoraService.rtmChannel && agoraService.rtmLoggedIn) {
+            try {
+              const message = JSON.stringify({ type: 'RECORDING_STATE', isRecording: true });
+              console.log(`📹 [HOST] Broadcasting RECORDING_STATE (attempt ${i + 1}/${retries}):`, message);
+              await agoraService.rtmChannel.publishMessage(message);
+              console.log('📹 [HOST] RECORDING_STATE message sent successfully');
+              return; // Success, exit retry loop
+            } catch (err) {
+              console.error(`❌ [HOST] Failed to broadcast recording state (attempt ${i + 1}):`, err);
+              if (i < retries - 1) {
+                // Wait before retrying
+                await new Promise(resolve => setTimeout(resolve, 500));
+              }
+            }
+          } else {
+            console.warn(`⚠️ [HOST] RTM channel not ready (attempt ${i + 1}):`, {
+              hasChannel: !!agoraService.rtmChannel,
+              isLoggedIn: agoraService.rtmLoggedIn
+            });
+            if (i < retries - 1) {
+              // Wait before retrying
+              await new Promise(resolve => setTimeout(resolve, 500));
+            }
+          }
         }
-      } else {
-        console.warn('⚠️ [HOST] Cannot broadcast recording state - RTM channel not ready:', {
-          hasChannel: !!agoraService.rtmChannel,
-          isLoggedIn: agoraService.rtmLoggedIn
-        });
-      }
+      };
+      
+      // Try immediately, then retry after a short delay if needed
+      await broadcastRecordingState();
+      // Also try again after a short delay to catch any late joiners
+      setTimeout(() => {
+        if (isRecording) {
+          broadcastRecordingState(1).catch(console.error);
+        }
+      }, 1000);
     } catch (err: any) {
       toast.error(`Failed to start recording: ${err.message}`);
       console.error('Recording error:', err);
