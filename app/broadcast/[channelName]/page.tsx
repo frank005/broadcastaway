@@ -2388,12 +2388,12 @@ function BroadcastPageContent() {
       }
 
       // Always reset UI state regardless of API call results
-      resetUIState();
+      await resetUIState();
     } catch (err: any) {
       // Fallback error handling - still reset UI state
       console.error('Unexpected error stopping recording:', err);
       toast.error(`Error stopping recording: ${err.message}`);
-      resetUIState();
+      await resetUIState();
     }
   };
 
