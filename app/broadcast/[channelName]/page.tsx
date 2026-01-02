@@ -294,37 +294,37 @@ function BroadcastPageContent() {
         console.log('👥 [PAGE] Participants updated:', participantsList);
       };
 
-      agoraService.onUserJoined = (userId: string) => {
+      agoraService.onUserJoined = async (userId: string) => {
         // When a new user joins, send them the current recording and STT states
-          if (agoraService.rtmClient && agoraService.rtmLoggedIn && agoraService.channelName) {
-            // Send recording state if recording is active
-            if (isRecording) {
-              try {
-                const recordingMessage = JSON.stringify({ type: 'RECORDING_STATE', isRecording: true });
-                console.log('📹 [HOST] Sending recording state to new user:', userId, recordingMessage);
-                await agoraService.rtmClient.publish(agoraService.channelName, recordingMessage);
-              } catch (err: any) {
-                console.error('Failed to send recording state to new user:', err);
-              }
-            }
-            
-            // Send STT state if STT is active
-            if (isSTTRunning && sttConfig.languages.length > 0) {
-              try {
-                const sttMessage = JSON.stringify({
-                  type: 'STT_CONFIG',
-                  languages: sttConfig.languages,
-                  translateConfig: sttConfig.translateConfig?.enable ? {
-                    languages: sttConfig.translateConfig.languages
-                  } : undefined
-                });
-                console.log('🎤 [HOST] Sending STT config to new user:', userId, sttMessage);
-                await agoraService.rtmClient.publish(agoraService.channelName, sttMessage);
-              } catch (err: any) {
-                console.error('Failed to send STT config to new user:', err);
-              }
+        if (agoraService.rtmClient && agoraService.rtmLoggedIn && agoraService.channelName) {
+          // Send recording state if recording is active
+          if (isRecording) {
+            try {
+              const recordingMessage = JSON.stringify({ type: 'RECORDING_STATE', isRecording: true });
+              console.log('📹 [HOST] Sending recording state to new user:', userId, recordingMessage);
+              await agoraService.rtmClient.publish(agoraService.channelName, recordingMessage);
+            } catch (err: any) {
+              console.error('Failed to send recording state to new user:', err);
             }
           }
+          
+          // Send STT state if STT is active
+          if (isSTTRunning && sttConfig.languages.length > 0) {
+            try {
+              const sttMessage = JSON.stringify({
+                type: 'STT_CONFIG',
+                languages: sttConfig.languages,
+                translateConfig: sttConfig.translateConfig?.enable ? {
+                  languages: sttConfig.translateConfig.languages
+                } : undefined
+              });
+              console.log('🎤 [HOST] Sending STT config to new user:', userId, sttMessage);
+              await agoraService.rtmClient.publish(agoraService.channelName, sttMessage);
+            } catch (err: any) {
+              console.error('Failed to send STT config to new user:', err);
+            }
+          }
+        }
         if (!isMounted) return;
         const timestamp = new Date().toLocaleTimeString();
         // Get display name from map, fallback to userId if not found
@@ -515,13 +515,12 @@ function BroadcastPageContent() {
           }
           
           // Broadcast current recording state to any existing audience members
-          if (agoraService.rtmChannel && agoraService.rtmLoggedIn && isRecording) {
+          if (agoraService.rtmClient && agoraService.rtmLoggedIn && agoraService.channelName && isRecording) {
             try {
-              agoraService.rtmChannel.publishMessage(
+              await agoraService.rtmClient.publish(
+                agoraService.channelName,
                 JSON.stringify({ type: 'RECORDING_STATE', isRecording: true })
-              ).catch((err: any) => {
-                console.error('Failed to broadcast initial recording state:', err);
-              });
+              );
             } catch (err: any) {
               console.error('Failed to broadcast initial recording state:', err);
             }
@@ -2157,11 +2156,11 @@ function BroadcastPageContent() {
       // Broadcast recording state to all users via RTM (with retry)
       const broadcastRecordingState = async (retries = 3) => {
         for (let i = 0; i < retries; i++) {
-          if (agoraService.rtmChannel && agoraService.rtmLoggedIn) {
+          if (agoraService.rtmClient && agoraService.rtmLoggedIn && agoraService.channelName) {
             try {
               const message = JSON.stringify({ type: 'RECORDING_STATE', isRecording: true });
               console.log(`📹 [HOST] Broadcasting RECORDING_STATE (attempt ${i + 1}/${retries}):`, message);
-              await agoraService.sendChannelMessage(message);
+              await agoraService.rtmClient.publish(agoraService.channelName, message);
               console.log('📹 [HOST] RECORDING_STATE message sent successfully');
               return; // Success, exit retry loop
             } catch (err) {
@@ -2172,9 +2171,10 @@ function BroadcastPageContent() {
               }
             }
           } else {
-            console.warn(`⚠️ [HOST] RTM channel not ready (attempt ${i + 1}):`, {
-              hasChannel: !!agoraService.rtmChannel,
-              isLoggedIn: agoraService.rtmLoggedIn
+            console.warn(`⚠️ [HOST] RTM not ready (attempt ${i + 1}):`, {
+              hasClient: !!agoraService.rtmClient,
+              isLoggedIn: agoraService.rtmLoggedIn,
+              hasChannelName: !!agoraService.channelName
             });
             if (i < retries - 1) {
               // Wait before retrying
