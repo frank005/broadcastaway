@@ -283,16 +283,38 @@ function BroadcastPageContent() {
       };
 
       agoraService.onUserJoined = (userId: string) => {
-        // When a new user joins, send them the current recording state
-        if (isRecording && agoraService.rtmChannel && agoraService.rtmLoggedIn) {
-          try {
-            agoraService.rtmChannel.publishMessage(
-              JSON.stringify({ type: 'RECORDING_STATE', isRecording: true })
-            ).catch((err: any) => {
+        // When a new user joins, send them the current recording and STT states
+        if (agoraService.rtmChannel && agoraService.rtmLoggedIn) {
+          // Send recording state if recording is active
+          if (isRecording) {
+            try {
+              const recordingMessage = JSON.stringify({ type: 'RECORDING_STATE', isRecording: true });
+              console.log('📹 [HOST] Sending recording state to new user:', userId, recordingMessage);
+              agoraService.rtmChannel.publishMessage(recordingMessage).catch((err: any) => {
+                console.error('Failed to send recording state to new user:', err);
+              });
+            } catch (err: any) {
               console.error('Failed to send recording state to new user:', err);
-            });
-          } catch (err: any) {
-            console.error('Failed to send recording state to new user:', err);
+            }
+          }
+          
+          // Send STT state if STT is active
+          if (isSTTRunning && sttConfig.languages.length > 0) {
+            try {
+              const sttMessage = JSON.stringify({
+                type: 'STT_CONFIG',
+                languages: sttConfig.languages,
+                translateConfig: sttConfig.translateConfig?.enable ? {
+                  languages: sttConfig.translateConfig.languages
+                } : undefined
+              });
+              console.log('🎤 [HOST] Sending STT config to new user:', userId, sttMessage);
+              agoraService.rtmChannel.publishMessage(sttMessage).catch((err: any) => {
+                console.error('Failed to send STT config to new user:', err);
+              });
+            } catch (err: any) {
+              console.error('Failed to send STT config to new user:', err);
+            }
           }
         }
         if (!isMounted) return;
