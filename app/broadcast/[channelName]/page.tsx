@@ -2127,12 +2127,18 @@ function BroadcastPageContent() {
       // Broadcast recording state to all users via RTM
       if (agoraService.rtmChannel && agoraService.rtmLoggedIn) {
         try {
-          await agoraService.rtmChannel.publishMessage(
-            JSON.stringify({ type: 'RECORDING_STATE', isRecording: true })
-          );
+          const message = JSON.stringify({ type: 'RECORDING_STATE', isRecording: true });
+          console.log('📹 [HOST] Broadcasting RECORDING_STATE:', message);
+          await agoraService.rtmChannel.publishMessage(message);
+          console.log('📹 [HOST] RECORDING_STATE message sent successfully');
         } catch (err) {
-          console.error('Failed to broadcast recording state:', err);
+          console.error('❌ [HOST] Failed to broadcast recording state:', err);
         }
+      } else {
+        console.warn('⚠️ [HOST] Cannot broadcast recording state - RTM channel not ready:', {
+          hasChannel: !!agoraService.rtmChannel,
+          isLoggedIn: agoraService.rtmLoggedIn
+        });
       }
     } catch (err: any) {
       toast.error(`Failed to start recording: ${err.message}`);
@@ -2152,14 +2158,16 @@ function BroadcastPageContent() {
       // Broadcast recording state to all users via RTM
       if (agoraService.rtmChannel && agoraService.rtmLoggedIn) {
         try {
-          agoraService.rtmChannel.publishMessage(
-            JSON.stringify({ type: 'RECORDING_STATE', isRecording: false })
-          ).catch((err: any) => {
-            console.error('Failed to broadcast recording state:', err);
+          const message = JSON.stringify({ type: 'RECORDING_STATE', isRecording: false });
+          console.log('📹 [HOST] Broadcasting RECORDING_STATE (stop):', message);
+          agoraService.rtmChannel.publishMessage(message).catch((err: any) => {
+            console.error('❌ [HOST] Failed to broadcast recording state:', err);
           });
         } catch (err: any) {
-          console.error('Failed to broadcast recording state:', err);
+          console.error('❌ [HOST] Failed to broadcast recording state:', err);
         }
+      } else {
+        console.warn('⚠️ [HOST] Cannot broadcast recording state - RTM channel not ready');
       }
     };
 

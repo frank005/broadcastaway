@@ -140,6 +140,7 @@ function AudiencePageContent() {
         try {
           const message = JSON.parse(content);
           if (message.type === 'RECORDING_STATE') {
+            console.log('📹 [AUDIENCE] Received RECORDING_STATE:', message.isRecording);
             setIsRecording(message.isRecording || false);
             return; // Don't add to chat
           }
