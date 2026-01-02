@@ -1502,6 +1502,21 @@ class AgoraService {
       console.log('✅ [SCREEN SHARE] Mapped screen share RTC UID', screenShareNumericUid, 'to RTM user ID', screenShareUserId);
       console.log('✅ [SCREEN SHARE] Set display name for screen share:', screenShareDisplayName);
       
+      // Set RTM metadata for screen share user so audience can fetch the display name
+      if (this.rtmClient && this.rtmLoggedIn) {
+        try {
+          await this.rtmClient.storage.setUserMetadata([
+            { key: 'displayName', value: screenShareDisplayName },
+            { key: 'username', value: screenShareUserId },
+            { key: 'rtcUid', value: screenShareNumericUid.toString() }
+          ]);
+          console.log('✅ [SCREEN SHARE] Set RTM metadata for screen share user:', screenShareDisplayName);
+        } catch (metaErr) {
+          console.warn('⚠️ [SCREEN SHARE] Failed to set RTM metadata for screen share user:', metaErr);
+          // Don't fail screen share if metadata update fails
+        }
+      }
+      
       // Set up event handlers for screen share client to ensure proper user tracking
       this.screenShareClient.on('user-published', async (user, mediaType) => {
         console.log('🖥️ [SCREEN SHARE] User published on screen share client:', {
