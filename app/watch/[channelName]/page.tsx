@@ -146,7 +146,9 @@ function AudiencePageContent() {
           const message = JSON.parse(content);
           if (message.type === 'RECORDING_STATE') {
             console.log('📹 [AUDIENCE] Received RECORDING_STATE:', message.isRecording);
-            setIsRecording(message.isRecording || false);
+            const newRecordingState = message.isRecording || false;
+            console.log('📹 [AUDIENCE] Setting isRecording to:', newRecordingState);
+            setIsRecording(newRecordingState);
             return; // Don't add to chat
           }
           if (message.type === 'STT_STOP') {
@@ -1203,12 +1205,12 @@ function AudiencePageContent() {
         {/* Main Stage */}
         <div className="flex-1 flex flex-col p-6 space-y-4 relative">
           {/* Recording Indicator - Top Right Corner of Video Area */}
-          {isRecording && (
-            <div className="absolute top-0 right-0 z-50 flex items-center space-x-2 bg-red-600 px-3 py-1.5 rounded-full shadow-lg m-4">
+          {isRecording ? (
+            <div className="absolute top-6 right-6 z-[100] flex items-center space-x-2 bg-red-600 px-3 py-1.5 rounded-full shadow-lg">
               <Circle size={8} className="fill-white text-white animate-pulse" />
               <span className="text-xs font-bold uppercase tracking-wider text-white">Recording</span>
             </div>
-          )}
+          ) : null}
           <div className={`flex-1 grid gap-4 ${remoteUsers.length + (role === 'promoted' ? 1 : 0) > 1 ? 'grid-cols-2' : 'grid-cols-1'}`}>
             {/* Host / Other Promoted Users */}
             {remoteUsers.map(user => {
