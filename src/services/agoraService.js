@@ -957,6 +957,14 @@ class AgoraService {
           this.onMessageReceived(data.content, publisher);
         }
         break;
+      case 'RECORDING_STATE':
+      case 'STT_CONFIG':
+      case 'STT_STOP':
+        // Pass through system messages to onMessageReceived callback
+        if (this.onMessageReceived) {
+          this.onMessageReceived(JSON.stringify(data), publisher);
+        }
+        break;
       case 'HOST_LEFT':
         // Host has left - notify listeners to leave
         if (this.onHostLeft) {
