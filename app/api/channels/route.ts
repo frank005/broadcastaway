@@ -180,144 +180,34 @@ export async function GET(request: NextRequest) {
       console.log('📊 [CHANNELS API] After search filter:', filteredChannels.length);
     }
     
-    // Get host/viewer counts for each channel
-    // Use Promise.allSettled to handle partial failures gracefully
-    const channelsWithCounts = await Promise.allSettled(
-      filteredChannels.map(async (channel: any) => {
-        const channelName = channel.channel_name || channel.name || channel.channelName;
-        // Use user_count or uid_count from channel data as baseline
-        // Agora returns user_count in the channel list response
-        const baseUserCount = channel.user_count || channel.uid_count || 0;
-        
-        console.log(`📊 [CHANNELS API] Processing channel: ${channelName}, baseUserCount: ${baseUserCount}`);
-        
-        try {
-          // Get channel user list to count hosts vs viewers
-          // Correct endpoint: https://api.agora.io/dev/v1/channel/user/{appid}/{channelName}
-          const userUrl = `${baseUrl}/dev/v1/channel/user/${appId}/${encodeURIComponent(channelName)}`;
-          console.log(`📊 [CHANNELS API] Fetching users from: ${userUrl}`);
-          
-          // Add timeout for user count requests (5 seconds)
-          const userController = new AbortController();
-          const userTimeoutId = setTimeout(() => userController.abort(), 5000);
-          
-          let userResponse;
-          try {
-            userResponse = await fetch(userUrl, {
-              headers: {
-                'Authorization': `Basic ${auth}`,
-                'Content-Type': 'application/json',
-              },
-              signal: userController.signal,
-            });
-            clearTimeout(userTimeoutId);
-          } catch (fetchErr: any) {
-            clearTimeout(userTimeoutId);
-            if (fetchErr.name === 'AbortError') {
-              console.warn(`⚠️ [CHANNELS API] User count request timeout for ${channelName}`);
-              throw new Error('Timeout');
-            }
-            throw fetchErr;
-          }
-          
-          if (userResponse.ok) {
-            const userData = await userResponse.json();
-            console.log(`📊 [CHANNELS API] User API response for ${channelName}:`, JSON.stringify(userData, null, 2));
-            const users = userData.users || userData.data?.users || [];
-            
-            console.log(`📊 [CHANNELS API] Found ${users.length} users for ${channelName}`);
-            
-            // Count hosts (users with publish privilege) vs viewers
-            let hostCount = 0;
-            let viewerCount = 0;
-            
-            users.forEach((user: any) => {
-              if (user.role === 'publisher' || user.role === 'host') {
-                hostCount++;
-              } else {
-                viewerCount++;
-              }
-            });
-            
-            // If users array is empty but baseUserCount > 0, use baseUserCount
-            // This handles cases where the user API returns empty array but channel has users
-            const finalUserCount = users.length > 0 ? users.length : baseUserCount;
-            const finalHostCount = users.length > 0 ? hostCount : (baseUserCount > 0 ? 1 : 0);
-            const finalViewerCount = users.length > 0 ? viewerCount : Math.max(0, baseUserCount - 1);
-            
-            const result = {
-              ...channel,
-              name: channelName,
-              hostCount: finalHostCount,
-              viewerCount: finalViewerCount,
-              totalUsers: finalUserCount,
-              uidCount: finalUserCount,
-            };
-            
-            console.log(`📊 [CHANNELS API] Channel ${channelName} result:`, result);
-            return result;
-          } else {
-            const errorText = await userResponse.text();
-            console.warn(`⚠️ [CHANNELS API] User API returned ${userResponse.status} for ${channelName}:`, errorText);
-          }
-        } catch (err: any) {
-          console.warn(`⚠️ [CHANNELS API] Failed to get user count for ${channelName}:`, err?.message || err);
-        }
-        
-        // Fallback to channel uid_count if detailed user fetch failed
-        const fallbackResult = {
-          ...channel,
-          name: channelName,
-          hostCount: baseUserCount > 0 ? 1 : 0, // Assume at least 1 host if there are users
-          viewerCount: Math.max(0, baseUserCount - 1), // Rest are viewers
-          totalUsers: baseUserCount,
-          uidCount: baseUserCount,
-        };
-        
-        console.log(`📊 [CHANNELS API] Channel ${channelName} fallback result:`, fallbackResult);
-        return fallbackResult;
-      })
-    );
-    
-    // Handle Promise.allSettled results - extract values and handle rejections
-    const processedChannels = channelsWithCounts.map((result, index) => {
-      if (result.status === 'fulfilled') {
-        return result.value;
-      } else {
-        // If a promise was rejected, use fallback data from the original channel
-        const channel = filteredChannels[index];
-        const channelName = channel.channel_name || channel.name || channel.channelName;
-        // Agora returns user_count in the channel list response
-        const baseUserCount = channel.user_count || channel.uid_count || 0;
-        console.warn(`⚠️ [CHANNELS API] Promise rejected for ${channelName}, using fallback`);
-        return {
-          ...channel,
-          name: channelName,
-          hostCount: baseUserCount > 0 ? 1 : 0,
-          viewerCount: Math.max(0, baseUserCount - 1),
-          totalUsers: baseUserCount,
-          uidCount: baseUserCount,
-        };
-      }
+    // Simplify: Just return basic channel info, let frontend fetch host counts separately
+    // This matches shopscribe's approach and is more resilient
+    const processedChannels = filteredChannels.map((channel: any) => {
+      const channelName = channel.channel_name || channel.name || channel.channelName;
+      const baseUserCount = channel.user_count || channel.uid_count || 0;
+      
+      return {
+        ...channel,
+        name: channelName,
+        // Provide basic counts from channel list response
+        // Frontend will fetch detailed counts via /api/hosts
+        hostCount: 0, // Will be populated by frontend
+        viewerCount: 0, // Will be populated by frontend
+        totalUsers: baseUserCount,
+        uidCount: baseUserCount,
+      };
     });
     
-    // Filter out channels with no users
+    // Filter out channels with no users (based on uid_count from channel list)
     const activeChannels = processedChannels.filter((ch: any) => {
-      const hasUsers = ch.totalUsers > 0;
+      const hasUsers = ch.uidCount > 0;
       if (!hasUsers) {
-        console.log(`📊 [CHANNELS API] Filtering out channel "${ch.name}" (totalUsers: ${ch.totalUsers})`);
+        console.log(`📊 [CHANNELS API] Filtering out channel "${ch.name}" (uidCount: ${ch.uidCount})`);
       }
       return hasUsers;
     });
     
-    console.log('📊 [CHANNELS API] Filtered results:', {
-      totalChannels: processedChannels.length,
-      activeChannels: activeChannels.length,
-      filtered: processedChannels.filter((ch: any) => ch.totalUsers === 0).map((ch: any) => ch.name),
-      activeChannelNames: activeChannels.map((ch: any) => ch.name)
-    });
-    
-    console.log('✅ [CHANNELS API] Returning', activeChannels.length, 'active channels');
+    console.log('📊 [CHANNELS API] Returning', activeChannels.length, 'channels (host counts will be fetched by frontend)');
     
     // Add cache headers to prevent stale data, but allow short-term caching
     // Cache for 2 seconds to reduce load, but ensure fresh data

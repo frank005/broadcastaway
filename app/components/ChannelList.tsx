@@ -23,6 +23,28 @@ export default function ChannelList() {
   const abortControllerRef = useRef<AbortController | null>(null);
   const isFetchingRef = useRef(false);
 
+  // Fetch host information for a specific channel
+  const fetchHostInfo = async (channelName: string) => {
+    try {
+      const response = await fetch(`/api/hosts?channel=${encodeURIComponent(channelName)}`);
+      const data = await response.json();
+      
+      if (data.success) {
+        return {
+          hostCount: data.data.hostCount || 0,
+          viewerCount: data.data.viewerCount || 0,
+          totalUsers: data.data.totalUsers || 0
+        };
+      } else {
+        console.warn(`Failed to fetch host info for ${channelName}:`, data.error);
+        return { hostCount: 0, viewerCount: 0, totalUsers: 0 };
+      }
+    } catch (error) {
+      console.warn(`Error fetching host info for ${channelName}:`, error);
+      return { hostCount: 0, viewerCount: 0, totalUsers: 0 };
+    }
+  };
+
   const fetchChannels = useCallback(async () => {
     // Prevent multiple simultaneous requests
     if (isFetchingRef.current) {
@@ -53,6 +75,7 @@ export default function ChannelList() {
         params.append('search', searchTerm.trim());
       }
       
+      // Step 1: Get channel list
       const response = await fetch(`/api/channels?${params}`, {
         signal: controller.signal,
       });
@@ -70,7 +93,33 @@ export default function ChannelList() {
       }
       
       if (data.success) {
-        setChannels(data.channels || []);
+        console.log('📊 [CHANNEL LIST] Step 1 - Channel list received:', data.channels);
+        
+        // Step 2: For each channel, get host and audience information
+        const channelsWithHosts = await Promise.all(
+          data.channels.map(async (channel: Channel) => {
+            const hostInfo = await fetchHostInfo(channel.name);
+            console.log(`📊 [CHANNEL LIST] Step 2 - Host info for ${channel.name}:`, hostInfo);
+            
+            // Use the exact counts from the host API
+            const totalUsers = hostInfo.totalUsers || 0;
+            const hostCount = hostInfo.hostCount || 0;
+            const viewerCount = hostInfo.viewerCount || 0;
+            
+            return {
+              ...channel,
+              hostCount,
+              viewerCount,
+              totalUsers
+            };
+          })
+        );
+        
+        // Step 3: Filter out channels with no users (non-existent or empty channels)
+        const activeChannels = channelsWithHosts.filter(channel => channel.totalUsers > 0);
+        console.log(`📊 [CHANNEL LIST] Step 3 - Filtered ${channelsWithHosts.length} channels to ${activeChannels.length} active channels`);
+        
+        setChannels(activeChannels);
       } else {
         setError(data.error || 'Failed to fetch channels');
       }
