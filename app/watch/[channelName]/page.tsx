@@ -228,7 +228,7 @@ function AudiencePageContent() {
         }]);
       };
 
-      agoraService.onTrackPublished = (user: any, type: string) => {
+      agoraService.onTrackPublished = async (user: any, type: string) => {
         if (type === 'video') {
           // Ensure rtmUserId is set (unique RTM ID for internal use)
           if (!user.rtmUserId) {
