@@ -2425,45 +2425,49 @@ function BroadcastPageContent() {
               <span className="text-xs font-bold uppercase tracking-wider">Recording</span>
             </div>
           )}
-          <h1 className="text-lg font-bold">{displayName || channelName}</h1>
-          <span className="text-gray-400 text-sm">|</span>
-          <span className="text-gray-400 text-sm">Host: {userName}</span>
+          <h1 className="text-sm sm:text-base lg:text-lg font-bold truncate">{displayName || channelName}</h1>
+          <span className="text-gray-400 text-xs sm:text-sm hidden sm:inline">|</span>
+          <span className="text-gray-400 text-xs sm:text-sm truncate hidden sm:inline">Host: {userName}</span>
         </div>
-        <div className="flex items-center space-x-4">
+        <div className="flex items-center space-x-1 sm:space-x-2 lg:space-x-4 flex-shrink-0">
           {!isBroadcasting ? (
             <button 
               onClick={handleStartBroadcast}
-              className="flex items-center space-x-2 bg-agora-blue px-6 py-2 rounded-lg hover:bg-blue-600 transition-all font-bold"
+              className="flex items-center space-x-1 sm:space-x-2 bg-agora-blue px-2 sm:px-4 lg:px-6 py-1.5 sm:py-2 rounded-lg hover:bg-blue-600 transition-all font-bold text-xs sm:text-sm"
             >
-              <Play size={18} />
-              <span>Start Broadcast</span>
+              <Play size={14} className="sm:w-4 sm:h-4 lg:w-[18px] lg:h-[18px]" />
+              <span className="hidden sm:inline">Start Broadcast</span>
+              <span className="sm:hidden">Start</span>
             </button>
           ) : (
             <>
               <button 
                 onClick={toggleAiMode}
-                className={`flex items-center space-x-2 px-4 py-2 rounded-lg transition-all ${
+                className={`flex items-center space-x-1 sm:space-x-2 px-2 sm:px-3 lg:px-4 py-1.5 sm:py-2 rounded-lg transition-all text-xs sm:text-sm ${
                   isAiMode ? 'bg-agora-blue text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
                 }`}
               >
-                <Bot size={18} />
-                <span className="font-medium">AI Agent {isAiMode ? 'ON' : 'OFF'}</span>
+                <Bot size={14} className="sm:w-4 sm:h-4 lg:w-[18px] lg:h-[18px]" />
+                <span className="font-medium hidden sm:inline">AI Agent {isAiMode ? 'ON' : 'OFF'}</span>
+                <span className="font-medium sm:hidden">{isAiMode ? 'AI ON' : 'AI OFF'}</span>
               </button>
               {isBroadcasting && (
                 <button 
                   onClick={handleEndShow}
-                  className="flex items-center space-x-2 bg-yellow-600 px-4 py-2 rounded-lg hover:bg-yellow-700 transition-all font-bold"
+                  className="flex items-center space-x-1 sm:space-x-2 bg-yellow-600 px-2 sm:px-3 lg:px-4 py-1.5 sm:py-2 rounded-lg hover:bg-yellow-700 transition-all font-bold text-xs sm:text-sm"
                 >
-                  <Pause size={18} />
-                  <span>End Show</span>
+                  <Pause size={14} className="sm:w-4 sm:h-4 lg:w-[18px] lg:h-[18px]" />
+                  <span className="hidden sm:inline">End Show</span>
+                  <span className="sm:hidden">End</span>
                 </button>
               )}
               <button 
                 onClick={handleEndStream}
-                className="flex items-center space-x-2 bg-red-600 px-4 py-2 rounded-lg hover:bg-red-700 transition-all font-bold"
+                className="flex items-center space-x-1 sm:space-x-2 bg-red-600 px-2 sm:px-3 lg:px-4 py-1.5 sm:py-2 rounded-lg hover:bg-red-700 transition-all font-bold text-xs sm:text-sm"
               >
-                <PhoneOff size={18} />
-                <span>End Stream</span>
+                <PhoneOff size={14} className="sm:w-4 sm:h-4 lg:w-[18px] lg:h-[18px]" />
+                <span className="hidden sm:inline">End Stream</span>
+                <span className="sm:hidden">End</span>
               </button>
             </>
           )}
@@ -3190,11 +3194,11 @@ function BroadcastPageContent() {
             </button>
           </div>
 
-          <div className="flex-1 overflow-y-auto p-4">
+          <div className="flex-1 overflow-y-auto p-3 sm:p-4">
             {activeTab === 'chat' && (
               <div className="flex-1 flex flex-col">
                 {/* Participants List - Always visible at top of chat */}
-                <div className="mb-4 pb-4 border-b border-gray-800">
+                <div className="mb-3 sm:mb-4 pb-3 sm:pb-4 border-b border-gray-800">
                   <h3 className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-3">Participants ({participants.length + 1})</h3>
                   <div className="space-y-2 max-h-32 overflow-y-auto">
                     {/* Host (self) */}
@@ -3229,7 +3233,7 @@ function BroadcastPageContent() {
                     </p>
                   </div>
                 )}
-                <div className="flex-1 overflow-y-auto space-y-4 p-4">
+                <div className="flex-1 overflow-y-auto space-y-2 sm:space-y-4 p-3 sm:p-4">
                   {chatMessages.map((msg, i) => (
                     <div key={i} className={`flex flex-col ${msg.senderId === 'You' ? 'items-end' : 'items-start'}`}>
                       {!msg.isSystem && (
