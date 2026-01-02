@@ -2091,14 +2091,18 @@ function BroadcastPageContent() {
       setSttTranslations(new Map());
       
       // Broadcast STT stop to audience
-      if (agoraService.rtmChannel && agoraService.rtmLoggedIn) {
+      if (agoraService.rtmClient && agoraService.rtmLoggedIn && agoraService.channelName) {
         try {
-          await agoraService.rtmChannel.publishMessage(
+          await agoraService.rtmClient.publish(
+            agoraService.channelName,
             JSON.stringify({ type: 'STT_STOP' })
           );
+          console.log('📢 [HOST] STT stop message broadcasted');
         } catch (err) {
-          console.error('Failed to broadcast STT stop:', err);
+          console.error('❌ [HOST] Failed to broadcast STT stop:', err);
         }
+      } else {
+        console.warn('⚠️ [HOST] Cannot broadcast STT stop - RTM not ready');
       }
       
       toast.success('STT stopped', { id: 'stt-stop' });
