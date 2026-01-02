@@ -2200,7 +2200,7 @@ function BroadcastPageContent() {
 
   const handleStopRecording = async () => {
     // Always reset UI state, even if API calls fail
-    const resetUIState = () => {
+    const resetUIState = async () => {
       setRecordingSessions({});
       setIsRecording(false);
       setRecordingComposite(false);
