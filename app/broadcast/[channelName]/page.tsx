@@ -3528,13 +3528,13 @@ function BroadcastPageContent() {
             )}
           </div>
 
-          <div className="p-4 border-t border-gray-800 bg-gray-900">
+          <div className="p-3 sm:p-4 border-t border-gray-800 bg-gray-900">
             <div className="flex space-x-2">
               <input 
                 type="text" 
                 placeholder={rtmLoggedIn ? "Type a message..." : "Chat disabled - RTM not logged in"}
                 disabled={!rtmLoggedIn}
-                className={`flex-1 bg-gray-800 border border-gray-700 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-agora-blue ${
+                className={`flex-1 bg-gray-800 border border-gray-700 rounded-xl px-3 sm:px-4 py-2 text-xs sm:text-sm focus:outline-none focus:ring-1 focus:ring-agora-blue ${
                   !rtmLoggedIn ? 'opacity-50 cursor-not-allowed' : ''
                 }`}
                 value={newMessage}
@@ -3544,11 +3544,11 @@ function BroadcastPageContent() {
               <button 
                 onClick={handleSendMessage}
                 disabled={!rtmLoggedIn}
-                className={`p-2 bg-agora-blue rounded-xl text-white ${
+                className={`p-2 bg-agora-blue rounded-xl text-white flex-shrink-0 ${
                   !rtmLoggedIn ? 'opacity-50 cursor-not-allowed' : ''
                 }`}
               >
-                <Share2 size={20} />
+                <Share2 size={18} className="sm:w-5 sm:h-5" />
               </button>
             </div>
           </div>

@@ -1725,21 +1725,21 @@ function AudiencePageContent() {
             )}
           </div>
 
-          <div className="p-6 border-t border-gray-800 bg-gray-950">
-            <div className="flex space-x-3">
+          <div className="p-3 sm:p-4 lg:p-6 border-t border-gray-800 bg-gray-950">
+            <div className="flex space-x-2 sm:space-x-3">
               <input 
                 type="text" 
                 placeholder="Send a message..." 
-                className="flex-1 bg-gray-900 border border-gray-800 rounded-2xl px-5 py-3 text-sm focus:outline-none focus:ring-1 focus:ring-agora-blue transition-all"
+                className="flex-1 bg-gray-900 border border-gray-800 rounded-2xl px-3 sm:px-4 lg:px-5 py-2 sm:py-2.5 lg:py-3 text-xs sm:text-sm focus:outline-none focus:ring-1 focus:ring-agora-blue transition-all"
                 value={newMessage}
                 onChange={(e) => setNewMessage(e.target.value)}
                 onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
               />
               <button 
                 onClick={handleSendMessage}
-                className="p-3 bg-agora-blue rounded-2xl text-white hover:bg-blue-600 transition-all shadow-lg shadow-blue-500/20"
+                className="p-2 sm:p-2.5 lg:p-3 bg-agora-blue rounded-2xl text-white hover:bg-blue-600 transition-all shadow-lg shadow-blue-500/20 flex-shrink-0"
               >
-                <Share2 size={22} />
+                <Share2 size={18} className="sm:w-5 sm:h-5 lg:w-[22px] lg:h-[22px]" />
               </button>
             </div>
           </div>
