@@ -2035,7 +2035,18 @@ function BroadcastPageContent() {
       setSttAgentId(null);
       setSttTranscriptions(new Map());
       setSttTranslations(new Map());
-      setSttTranslations(new Map());
+      
+      // Broadcast STT stop to audience
+      if (agoraService.rtmChannel && agoraService.rtmLoggedIn) {
+        try {
+          await agoraService.rtmChannel.publishMessage(
+            JSON.stringify({ type: 'STT_STOP' })
+          );
+        } catch (err) {
+          console.error('Failed to broadcast STT stop:', err);
+        }
+      }
+      
       toast.success('STT stopped', { id: 'stt-stop' });
     } catch (err: any) {
       toast.error(`Failed to stop STT: ${err.message}`, { id: 'stt-stop' });

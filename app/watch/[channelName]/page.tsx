@@ -143,6 +143,16 @@ function AudiencePageContent() {
             setIsRecording(message.isRecording || false);
             return; // Don't add to chat
           }
+          if (message.type === 'STT_STOP') {
+            // Clear STT state when host stops STT
+            console.log('📢 [AUDIENCE] Received STT stop message');
+            setSttAvailableLanguages([]);
+            setSttTranslationPairs([]);
+            setSttTranscriptions(new Map());
+            setSttTranslations(new Map());
+            setSttUserLanguageSelections(new Map());
+            return; // Don't add to chat
+          }
           if (message.type === 'STT_CONFIG') {
             // Store STT configuration from host (optional - we also auto-detect from stream messages)
             console.log('📢 [AUDIENCE] Received STT config (optional):', message);
