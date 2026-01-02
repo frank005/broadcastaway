@@ -961,6 +961,7 @@ class AgoraService {
       case 'STT_CONFIG':
       case 'STT_STOP':
         // Pass through system messages to onMessageReceived callback
+        // Both host and audience handle these messages the same way
         if (this.onMessageReceived) {
           this.onMessageReceived(JSON.stringify(data), publisher);
         }

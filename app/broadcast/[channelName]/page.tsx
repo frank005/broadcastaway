@@ -261,17 +261,29 @@ function BroadcastPageContent() {
 
       agoraService.onMessageReceived = (content: string, senderId: string) => {
         if (!isMounted) return;
-        // Check if this is a recording state message (shouldn't happen from host, but handle it)
+        // Handle system messages consistently with audience side
         try {
           const message = JSON.parse(content);
+          // Handle system message types (same as audience)
           if (message.type === 'RECORDING_STATE') {
-            // This shouldn't happen from host, but handle it
-            return;
+            // Host sends this, but handle it if received from another source
+            console.log('📹 [HOST] Received RECORDING_STATE (unexpected):', message.isRecording);
+            return; // Don't add to chat
+          }
+          if (message.type === 'STT_STOP') {
+            // Handle STT stop message
+            console.log('📢 [HOST] Received STT stop message');
+            return; // Don't add to chat
+          }
+          if (message.type === 'STT_CONFIG') {
+            // Handle STT config message
+            console.log('📢 [HOST] Received STT config message');
+            return; // Don't add to chat
           }
         } catch (e) {
           // Not JSON, treat as regular chat message
         }
-        // Get display name from map, fallback to senderId if not found
+        // Regular chat message - add to chat
         const displayName = agoraService.rtmUserIdToDisplayNameMap?.get(senderId) || senderId;
         setChatMessages(prev => [...prev, { senderId: displayName, content, timestamp: new Date() }]);
       };
