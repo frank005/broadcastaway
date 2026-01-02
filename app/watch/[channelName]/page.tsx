@@ -277,16 +277,27 @@ function AudiencePageContent() {
       agoraService.onTranscriptionReceived = (uid: number, text: string, language: string) => {
         console.log('📝 [AUDIENCE] Transcription received:', { uid, text, language });
         
-        // If language is 'unknown', try to infer from available languages or use first available
+        // If language is 'unknown', try to infer from available languages
         let actualLanguage = language;
         if (!language || language === 'unknown') {
+          // Try to get from available languages first
           setSttAvailableLanguages(prev => {
             if (prev.length > 0) {
               actualLanguage = prev[0];
               console.log('📝 [AUDIENCE] Language was unknown, using first available:', actualLanguage);
+            } else {
+              // If no available languages yet, try common defaults or wait for STT config
+              // For now, we'll use 'en-US' as a fallback since it's most common
+              actualLanguage = 'en-US';
+              console.log('📝 [AUDIENCE] No available languages, using fallback:', actualLanguage);
             }
             return prev;
           });
+          
+          // If we still don't have a language, use fallback
+          if (!actualLanguage || actualLanguage === 'unknown') {
+            actualLanguage = 'en-US';
+          }
         }
         
         // Auto-detect STT is active and add language to available languages if not already present
@@ -304,11 +315,11 @@ function AudiencePageContent() {
           setSttUserLanguageSelections(prev => {
             const newMap = new Map(prev);
             const currentSelection = newMap.get(uid);
-            // Only set if not already set, or if current is 'unknown'
-            if (!currentSelection || currentSelection.transcriptionLang === 'unknown') {
+            // Always update if current is 'unknown' or not set
+            if (!currentSelection || currentSelection.transcriptionLang === 'unknown' || !currentSelection.transcriptionLang) {
               newMap.set(uid, { transcriptionLang: actualLanguage });
               agoraService.subscribeToSTTLanguages(uid, [actualLanguage], new Map());
-              console.log('📝 [AUDIENCE] Initialized language selection for UID:', uid, 'Language:', actualLanguage);
+              console.log('📝 [AUDIENCE] Initialized/updated language selection for UID:', uid, 'Language:', actualLanguage);
             }
             return newMap;
           });
@@ -1164,6 +1175,10 @@ function AudiencePageContent() {
               const displayName = user.displayName || user.rtmUserId || `User-${user.uid}`;
               const userStats = statsData.get(user.uid);
               const userLangSelection = sttUserLanguageSelections.get(user.uid) || (sttAvailableLanguages.length > 0 ? { transcriptionLang: sttAvailableLanguages[0] } : { transcriptionLang: 'en-US' });
+              // If language selection is 'unknown', try to use first available or fallback to en-US
+              const effectiveLang = userLangSelection.transcriptionLang === 'unknown' 
+                ? (sttAvailableLanguages.length > 0 ? sttAvailableLanguages[0] : 'en-US')
+                : userLangSelection.transcriptionLang;
               const transcription = sttTranscriptions.get(user.uid);
               const userTranslations = sttTranslations.get(user.uid);
               const translation = userLangSelection.translationLang && userTranslations 
@@ -1293,7 +1308,7 @@ function AudiencePageContent() {
                       </div>
                       {/* Transcription/Translation Overlay on Video - Bottom */}
                       <div className="absolute bottom-2 left-2 right-2 z-30 bg-black/50 backdrop-blur-sm rounded-lg p-3 border border-gray-600/50 max-w-full">
-                        {transcription && transcription.language === userLangSelection.transcriptionLang ? (
+                        {transcription && (transcription.language === userLangSelection.transcriptionLang || transcription.language === effectiveLang || (transcription.language === 'unknown' && effectiveLang)) ? (
                           <>
                             <div className="text-base text-white font-medium mb-1 break-words">{transcription.text}</div>
                             {translation && translation.targetLang === userLangSelection.translationLang && (
@@ -1345,6 +1360,10 @@ function AudiencePageContent() {
                   const localUid = (agoraService.rtcClient as any)?._uid || -1;
                   const localStats = statsData.get(localUid);
                   const promotedUserLangSelection = sttUserLanguageSelections.get(localUid) || (sttAvailableLanguages.length > 0 ? { transcriptionLang: sttAvailableLanguages[0] } : { transcriptionLang: 'en-US' });
+                  // If language selection is 'unknown', try to use first available or fallback to en-US
+                  const promotedEffectiveLang = promotedUserLangSelection.transcriptionLang === 'unknown' 
+                    ? (sttAvailableLanguages.length > 0 ? sttAvailableLanguages[0] : 'en-US')
+                    : promotedUserLangSelection.transcriptionLang;
                   const transcription = sttTranscriptions.get(localUid);
                   const userTranslations = sttTranslations.get(localUid);
                   const translation = promotedUserLangSelection.translationLang && userTranslations 
@@ -1469,7 +1488,7 @@ function AudiencePageContent() {
                           </div>
                           {/* Transcription/Translation Overlay on Video - Bottom */}
                           <div className="absolute bottom-2 left-2 right-2 z-30 bg-black/50 backdrop-blur-sm rounded-lg p-3 border border-gray-600/50 max-w-full">
-                            {transcription && transcription.language === promotedUserLangSelection.transcriptionLang ? (
+                            {transcription && (transcription.language === promotedUserLangSelection.transcriptionLang || transcription.language === promotedEffectiveLang || (transcription.language === 'unknown' && promotedEffectiveLang)) ? (
                               <>
                                 <div className="text-base text-white font-medium mb-1 break-words">{transcription.text}</div>
                                 {translation && translation.targetLang === promotedUserLangSelection.translationLang && (
