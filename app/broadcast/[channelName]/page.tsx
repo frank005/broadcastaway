@@ -122,6 +122,7 @@ function BroadcastPageContent() {
   const statsIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const hasAddedJoinMessageRef = useRef(false); // Prevent duplicate join messages
   const promotionMessagesRef = useRef<Set<string>>(new Set()); // Track promotion messages to prevent duplicates
+  const volumeUpdateTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   
   // Cloud Recording State
   const [showRecordingModal, setShowRecordingModal] = useState(false);
