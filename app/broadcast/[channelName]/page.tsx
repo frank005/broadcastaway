@@ -472,6 +472,19 @@ function BroadcastPageContent() {
             toast.error('RTM not logged in - Chat will not work', { duration: 5000 });
           }
           
+          // Broadcast current recording state to any existing audience members
+          if (agoraService.rtmChannel && agoraService.rtmLoggedIn && isRecording) {
+            try {
+              agoraService.rtmChannel.publishMessage(
+                JSON.stringify({ type: 'RECORDING_STATE', isRecording: true })
+              ).catch((err: any) => {
+                console.error('Failed to broadcast initial recording state:', err);
+              });
+            } catch (err: any) {
+              console.error('Failed to broadcast initial recording state:', err);
+            }
+          }
+          
           // Auto-start broadcast if enabled (check URL param first, then loaded settings)
           const urlAutoStart = searchParams?.get('autoStart') === 'true';
           const settingsAutoStart = loadedSettings.autoStartBroadcast;
