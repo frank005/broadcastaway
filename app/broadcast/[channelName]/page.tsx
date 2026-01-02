@@ -2406,8 +2406,8 @@ function BroadcastPageContent() {
   return (
     <div className="flex flex-col h-screen bg-agora-dark text-white overflow-hidden">
       {/* Header */}
-      <header className="flex items-center justify-between px-6 py-4 bg-agora-dark border-b border-gray-800">
-        <div className="flex items-center space-x-4">
+      <header className="flex items-center justify-between px-3 sm:px-4 lg:px-6 py-2 sm:py-3 lg:py-4 bg-agora-dark border-b border-gray-800">
+        <div className="flex items-center space-x-2 sm:space-x-4 min-w-0 flex-1">
           {isBroadcasting ? (
             <div className="flex items-center space-x-2 bg-red-600 px-3 py-1 rounded-full animate-pulse">
               <div className="w-2 h-2 bg-white rounded-full"></div>
@@ -2675,9 +2675,9 @@ function BroadcastPageContent() {
 
       <main className="flex-1 flex flex-col lg:flex-row overflow-hidden">
         {/* Main Stage */}
-        <div className="flex-1 flex flex-col p-6 space-y-4">
-          <div className={`flex-1 grid gap-4 ${
-            remoteUsers.length + (isBroadcasting && localVideoTrack ? 1 : 0) > 1 ? 'grid-cols-2' : 'grid-cols-1'
+        <div className="flex-1 flex flex-col p-3 sm:p-4 lg:p-6 space-y-2 sm:space-y-4 relative min-w-0">
+          <div className={`flex-1 grid gap-2 sm:gap-4 ${
+            remoteUsers.length + (isBroadcasting && localVideoTrack ? 1 : 0) > 1 ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-1'
           }`}>
             <div className="relative group">
               {showCamera && isBroadcasting && localVideoTrack ? (
