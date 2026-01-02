@@ -1154,13 +1154,37 @@ function BroadcastPageContent() {
     }
   };
 
-  const updateMediaPullVolume = async (volume: number) => {
-    try {
-      await agoraService.updateMediaPull({ volume });
-      setMediaPullState(prev => ({ ...prev, volume }));
-    } catch (err) {
-      toast.error('Failed to update volume');
+  const updateMediaPullVolume = async (volume: number, immediate = false) => {
+    // Update UI state immediately for visual feedback
+    setMediaPullState(prev => ({ ...prev, volume }));
+    
+    // Clear any pending update
+    if (volumeUpdateTimeoutRef.current) {
+      clearTimeout(volumeUpdateTimeoutRef.current);
     }
+    
+    // If immediate (e.g., on mouse up), update right away
+    if (immediate) {
+      try {
+        await agoraService.updateMediaPull({ volume });
+      } catch (error) {
+        toast.error('Failed to update volume');
+        // Revert UI state on error
+        setMediaPullState(prev => ({ ...prev, volume: prev.volume }));
+      }
+      return;
+    }
+    
+    // Otherwise, debounce the API call (wait 300ms after user stops dragging)
+    volumeUpdateTimeoutRef.current = setTimeout(async () => {
+      try {
+        await agoraService.updateMediaPull({ volume });
+      } catch (error) {
+        toast.error('Failed to update volume');
+        // Revert UI state on error
+        setMediaPullState(prev => ({ ...prev, volume: prev.volume }));
+      }
+    }, 300);
   };
 
   const seekMediaPull = async (position: number) => {
@@ -3278,7 +3302,9 @@ function BroadcastPageContent() {
                                   min="0" 
                                   max="200" 
                                   value={mediaPullState.volume}
-                                  onChange={(e) => updateMediaPullVolume(parseInt(e.target.value))}
+                                  onChange={(e) => updateMediaPullVolume(parseInt(e.target.value), false)}
+                                  onMouseUp={(e) => updateMediaPullVolume(parseInt((e.target as HTMLInputElement).value), true)}
+                                  onTouchEnd={(e) => updateMediaPullVolume(parseInt((e.target as HTMLInputElement).value), true)}
                                   className="w-full"
                                 />
                               </div>
