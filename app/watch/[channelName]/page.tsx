@@ -1131,13 +1131,6 @@ function AudiencePageContent() {
           <h1 className="text-lg font-bold">{displayName || channelName}</h1>
           <span className="text-gray-400 text-sm">|</span>
           <span className="text-gray-400 text-sm">{userName}</span>
-          {/* Recording Indicator */}
-          {isRecording ? (
-            <div className="flex items-center space-x-2 bg-red-600 px-3 py-1 rounded-full ml-4">
-              <Circle size={8} className="fill-white text-white" />
-              <span className="text-xs font-bold uppercase tracking-wider text-white">Recording</span>
-            </div>
-          ) : null}
         </div>
         <div className="flex items-center space-x-4">
           {role === 'audience' ? (
@@ -1206,7 +1199,14 @@ function AudiencePageContent() {
         </div>
       )}
 
-      <main className="flex-1 flex overflow-hidden">
+      <main className="flex-1 flex overflow-hidden relative">
+        {/* Recording Indicator - Top Right Corner */}
+        {isRecording && (
+          <div className="absolute top-4 right-4 z-50 flex items-center space-x-2 bg-red-600 px-3 py-1.5 rounded-full shadow-lg">
+            <Circle size={8} className="fill-white text-white animate-pulse" />
+            <span className="text-xs font-bold uppercase tracking-wider text-white">Recording</span>
+          </div>
+        )}
         {/* Main Stage */}
         <div className="flex-1 flex flex-col p-6 space-y-4">
           <div className={`flex-1 grid gap-4 ${remoteUsers.length + (role === 'promoted' ? 1 : 0) > 1 ? 'grid-cols-2' : 'grid-cols-1'}`}>
