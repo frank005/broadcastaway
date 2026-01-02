@@ -1163,35 +1163,37 @@ function AudiencePageContent() {
       )}
 
       {/* Header */}
-      <header className="flex items-center justify-between px-6 py-4 bg-agora-dark border-b border-gray-800">
-        <div className="flex items-center space-x-4">
-          <div className="flex items-center space-x-2 bg-agora-blue px-3 py-1 rounded-full">
-            <Users size={14} className="text-white" />
-            <span className="text-xs font-bold uppercase tracking-wider">Watching</span>
+      <header className="flex items-center justify-between px-3 sm:px-4 lg:px-6 py-2 sm:py-3 lg:py-4 bg-agora-dark border-b border-gray-800">
+        <div className="flex items-center space-x-2 sm:space-x-4 min-w-0 flex-1">
+          <div className="flex items-center space-x-1 sm:space-x-2 bg-agora-blue px-2 sm:px-3 py-1 rounded-full flex-shrink-0">
+            <Users size={12} className="sm:w-3.5 sm:h-3.5 text-white" />
+            <span className="text-[10px] sm:text-xs font-bold uppercase tracking-wider hidden sm:inline">Watching</span>
           </div>
-          <h1 className="text-lg font-bold">{displayName || channelName}</h1>
-          <span className="text-gray-400 text-sm">|</span>
-          <span className="text-gray-400 text-sm">{userName}</span>
+          <h1 className="text-sm sm:text-base lg:text-lg font-bold truncate">{displayName || channelName}</h1>
+          <span className="text-gray-400 text-xs sm:text-sm hidden sm:inline">|</span>
+          <span className="text-gray-400 text-xs sm:text-sm truncate hidden sm:inline">{userName}</span>
         </div>
-        <div className="flex items-center space-x-4">
+        <div className="flex items-center space-x-1 sm:space-x-2 lg:space-x-4 flex-shrink-0">
           {role === 'audience' ? (
             <button 
               onClick={handleApply}
               disabled={hasApplied}
-              className={`flex items-center space-x-2 px-4 py-2 rounded-lg font-bold transition-all ${
+              className={`flex items-center space-x-1 sm:space-x-2 px-2 sm:px-3 lg:px-4 py-1.5 sm:py-2 rounded-lg font-bold transition-all text-xs sm:text-sm ${
                 hasApplied ? 'bg-gray-800 text-gray-500 cursor-not-allowed' : 'bg-agora-blue text-white hover:bg-blue-600'
               }`}
             >
-              <Hand size={18} />
-              <span>{hasApplied ? 'Request Sent' : 'Ask to Join Stage'}</span>
+              <Hand size={14} className="sm:w-4 sm:h-4 lg:w-[18px] lg:h-[18px]" />
+              <span className="hidden sm:inline">{hasApplied ? 'Request Sent' : 'Ask to Join Stage'}</span>
+              <span className="sm:hidden">{hasApplied ? 'Sent' : 'Join'}</span>
             </button>
           ) : (
             <button 
               onClick={handleDemoteSelf}
-              className="flex items-center space-x-2 bg-yellow-500 text-agora-dark px-4 py-2 rounded-lg hover:bg-yellow-600 transition-all font-bold"
+              className="flex items-center space-x-1 sm:space-x-2 bg-yellow-500 text-agora-dark px-2 sm:px-3 lg:px-4 py-1.5 sm:py-2 rounded-lg hover:bg-yellow-600 transition-all font-bold text-xs sm:text-sm"
             >
-              <Rocket size={18} />
-              <span>Leave Stage</span>
+              <Rocket size={14} className="sm:w-4 sm:h-4 lg:w-[18px] lg:h-[18px]" />
+              <span className="hidden sm:inline">Leave Stage</span>
+              <span className="sm:hidden">Leave</span>
             </button>
           )}
           {/* Statistics Toggle Button */}
@@ -1216,10 +1218,11 @@ function AudiencePageContent() {
           )}
           <button 
             onClick={handleLeave}
-            className="flex items-center space-x-2 bg-gray-800 px-4 py-2 rounded-lg hover:bg-gray-700 transition-all text-gray-300"
+            className="flex items-center space-x-1 sm:space-x-2 bg-gray-800 px-2 sm:px-3 lg:px-4 py-1.5 sm:py-2 rounded-lg hover:bg-gray-700 transition-all text-gray-300 text-xs sm:text-sm"
           >
-            <PhoneOff size={18} />
-            <span>Leave Room</span>
+            <PhoneOff size={14} className="sm:w-4 sm:h-4 lg:w-[18px] lg:h-[18px]" />
+            <span className="hidden sm:inline">Leave Room</span>
+            <span className="sm:hidden">Leave</span>
           </button>
         </div>
       </header>
@@ -1240,17 +1243,17 @@ function AudiencePageContent() {
         </div>
       )}
 
-      <main className="flex-1 flex overflow-hidden">
+      <main className="flex-1 flex flex-col lg:flex-row overflow-hidden">
         {/* Main Stage */}
-        <div className="flex-1 flex flex-col p-6 space-y-4 relative">
+        <div className="flex-1 flex flex-col p-3 sm:p-4 lg:p-6 space-y-2 sm:space-y-4 relative min-w-0">
           {/* Recording Indicator - Top Right Corner of Video Area */}
           {isRecording ? (
-            <div className="absolute top-6 right-6 z-[100] flex items-center space-x-2 bg-red-600 px-3 py-1.5 rounded-full shadow-lg">
-              <Circle size={8} className="fill-white text-white animate-pulse" />
-              <span className="text-xs font-bold uppercase tracking-wider text-white">Recording</span>
+            <div className="absolute top-2 right-2 sm:top-6 sm:right-6 z-[100] flex items-center space-x-2 bg-red-600 px-2 sm:px-3 py-1 sm:py-1.5 rounded-full shadow-lg">
+              <Circle size={6} className="sm:w-2 sm:h-2 fill-white text-white animate-pulse" />
+              <span className="text-[10px] sm:text-xs font-bold uppercase tracking-wider text-white">Recording</span>
             </div>
           ) : null}
-          <div className={`flex-1 grid gap-4 ${remoteUsers.length + (role === 'promoted' ? 1 : 0) > 1 ? 'grid-cols-2' : 'grid-cols-1'}`}>
+          <div className={`flex-1 grid gap-2 sm:gap-4 ${remoteUsers.length + (role === 'promoted' ? 1 : 0) > 1 ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-1'}`}>
             {/* Host / Other Promoted Users */}
             {remoteUsers.map(user => {
               const displayName = user.displayName || user.rtmUserId || `User-${user.uid}`;
@@ -1657,14 +1660,14 @@ function AudiencePageContent() {
         </div>
 
         {/* Sidebar */}
-        <div className="w-96 bg-gray-900 border-l border-gray-800 flex flex-col shadow-2xl">
+        <div className="w-full lg:w-80 xl:w-96 bg-gray-900 border-t lg:border-t-0 lg:border-l border-gray-800 flex flex-col shadow-2xl max-h-[50vh] lg:max-h-none">
           <div className="flex border-b border-gray-800">
             <button className="flex-1 py-5 text-sm font-bold border-b-2 border-agora-blue text-agora-blue uppercase tracking-widest">
               Live Chat
             </button>
           </div>
 
-          <div className="flex-1 overflow-y-auto p-6 space-y-4">
+          <div className="flex-1 overflow-y-auto p-3 sm:p-4 lg:p-6 space-y-2 sm:space-y-4">
             {/* Participants List - Always visible at top of chat with scrollable max height */}
             <div className="mb-4 pb-4 border-b border-gray-800">
               <h3 className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-3">Participants ({participants.length + 1})</h3>
