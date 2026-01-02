@@ -283,6 +283,18 @@ function BroadcastPageContent() {
       };
 
       agoraService.onUserJoined = (userId: string) => {
+        // When a new user joins, send them the current recording state
+        if (isRecording && agoraService.rtmChannel && agoraService.rtmLoggedIn) {
+          try {
+            agoraService.rtmChannel.publishMessage(
+              JSON.stringify({ type: 'RECORDING_STATE', isRecording: true })
+            ).catch((err: any) => {
+              console.error('Failed to send recording state to new user:', err);
+            });
+          } catch (err: any) {
+            console.error('Failed to send recording state to new user:', err);
+          }
+        }
         if (!isMounted) return;
         const timestamp = new Date().toLocaleTimeString();
         // Get display name from map, fallback to userId if not found
