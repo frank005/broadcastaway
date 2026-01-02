@@ -2055,9 +2055,10 @@ function BroadcastPageContent() {
         });
         
         // Broadcast STT config to all users via RTM
-        if (agoraService.rtmChannel && agoraService.rtmLoggedIn) {
+        if (agoraService.rtmClient && agoraService.rtmLoggedIn && agoraService.channelName) {
           try {
-            await agoraService.rtmChannel.publishMessage(
+            await agoraService.rtmClient.publish(
+              agoraService.channelName,
               JSON.stringify({
                 type: 'STT_CONFIG',
                 languages: sttConfig.languages,
@@ -2066,6 +2067,7 @@ function BroadcastPageContent() {
                 } : undefined
               })
             );
+            console.log('📢 [HOST] STT config broadcasted to all users');
           } catch (err) {
             console.error('Failed to broadcast STT config:', err);
           }

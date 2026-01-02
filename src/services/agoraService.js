@@ -2655,10 +2655,9 @@ class AgoraService {
       try {
         console.log('📢 [LEAVE] Host leaving - notifying all users to leave...');
         // Send a message to all users in the channel to leave
-        await this.rtmClient.publishMessage(
+        await this.rtmClient.publish(
           channelName,
-          JSON.stringify({ type: 'HOST_LEFT', message: 'The host has ended the stream' }),
-          { enableOfflineMessaging: false }
+          JSON.stringify({ type: 'HOST_LEFT', message: 'The host has ended the stream' })
         );
         console.log('✅ [LEAVE] Notification sent to all users');
       } catch (err) {
