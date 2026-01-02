@@ -73,6 +73,11 @@ function AudiencePageContent() {
   const promotionMessageRef = useRef(false); // Prevent duplicate promotion messages
   const [isRecording, setIsRecording] = useState(false); // Track recording state from host
   
+  // Debug: Log when isRecording changes
+  useEffect(() => {
+    console.log('📹 [AUDIENCE] isRecording state changed:', isRecording);
+  }, [isRecording]);
+  
   // STT State (for audience)
   const [sttTranscriptions, setSttTranscriptions] = useState<Map<number, { text: string; language: string; timestamp: Date }>>(new Map());
   // Store translations per user - key is uid, value is map of targetLang -> translation
@@ -223,16 +228,40 @@ function AudiencePageContent() {
 
       agoraService.onTrackPublished = (user: any, type: string) => {
         if (type === 'video') {
-          // Use display name from displayNameMap if available (shows original name, not unique RTM ID)
-          const displayName = agoraService.displayNameMap?.get(user.uid) || user.displayName || `User-${user.uid}`;
-          user.displayName = displayName;
           // Ensure rtmUserId is set (unique RTM ID for internal use)
           if (!user.rtmUserId) {
             user.rtmUserId = agoraService.userIdMap?.get(user.uid) || `User-${user.uid}`;
           }
+          
+          // Check if this is a screen share user
+          const rtmUserId = agoraService.userIdMap?.get(user.uid) || user.rtmUserId;
+          const isScreenShare = rtmUserId && rtmUserId.endsWith('-screen');
+          
+          // Use display name from displayNameMap if available (shows original name, not unique RTM ID)
+          let displayName = agoraService.displayNameMap?.get(user.uid) || user.displayName;
+          
+          // If it's a screen share and we don't have a display name, construct it from the RTM user ID
+          if (isScreenShare && !displayName) {
+            // Extract base username from RTM user ID (e.g., "frank-12345-screen" -> "frank-screen")
+            const baseUserId = rtmUserId.replace(/-screen$/, '');
+            // Try to get the original display name from RTM metadata or use the base user ID
+            const baseDisplayName = agoraService.rtmUserIdToDisplayNameMap?.get(baseUserId) || baseUserId.split('-').slice(0, -1).join('-') || baseUserId;
+            displayName = `${baseDisplayName}-screen`;
+            // Store it in displayNameMap for future reference
+            agoraService.displayNameMap?.set(user.uid, displayName);
+          }
+          
+          // Fallback to User-{uid} if still no display name
+          if (!displayName) {
+            displayName = `User-${user.uid}`;
+          }
+          
+          user.displayName = displayName;
           console.log('👤 [AUDIENCE] User published:', { 
             uid: user.uid, 
             displayName, 
+            rtmUserId,
+            isScreenShare,
             hasVideo: !!user.videoTrack,
             videoTrackId: user.videoTrack?.getTrackId?.(),
             videoTrackType: typeof user.videoTrack
@@ -1103,12 +1132,12 @@ function AudiencePageContent() {
           <span className="text-gray-400 text-sm">|</span>
           <span className="text-gray-400 text-sm">{userName}</span>
           {/* Recording Indicator */}
-          {isRecording && (
+          {isRecording ? (
             <div className="flex items-center space-x-2 bg-red-600 px-3 py-1 rounded-full ml-4">
               <Circle size={8} className="fill-white text-white" />
-              <span className="text-xs font-bold uppercase tracking-wider">Recording</span>
+              <span className="text-xs font-bold uppercase tracking-wider text-white">Recording</span>
             </div>
-          )}
+          ) : null}
         </div>
         <div className="flex items-center space-x-4">
           {role === 'audience' ? (

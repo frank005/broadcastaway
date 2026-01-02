@@ -1487,7 +1487,11 @@ class AgoraService {
       
       // Map screen share client UID to RTM user ID (screenShareUserId already defined above)
       this.userIdMap.set(screenShareNumericUid, screenShareUserId);
+      // Set display name for screen share (base username + "-screen")
+      const screenShareDisplayName = `${this.currentUser.userId}-screen`;
+      this.displayNameMap.set(screenShareNumericUid, screenShareDisplayName);
       console.log('✅ [SCREEN SHARE] Mapped screen share RTC UID', screenShareNumericUid, 'to RTM user ID', screenShareUserId);
+      console.log('✅ [SCREEN SHARE] Set display name for screen share:', screenShareDisplayName);
       
       // Set up event handlers for screen share client to ensure proper user tracking
       this.screenShareClient.on('user-published', async (user, mediaType) => {

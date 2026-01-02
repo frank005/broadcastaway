@@ -2911,6 +2911,11 @@ function BroadcastPageContent() {
               const rtmUserId = agoraService.userIdMap?.get(user.uid) || user.rtmUserId; // For internal checks
               const isScreenShare = (screenShareUid && user.uid === screenShareUid) || 
                                    (rtmUserId && rtmUserId.endsWith('-screen'));
+              
+              // For screen share, use the base username + "-screen" format
+              if (isScreenShare && userName) {
+                displayName = `${userName}-screen`;
+              }
               // Don't show Media Gateway user (888) when OBS is connected - host has preview
               if (user.uid === 888 && obsConnected) {
                 return null;
