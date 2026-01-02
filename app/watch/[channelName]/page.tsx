@@ -1249,7 +1249,7 @@ function AudiencePageContent() {
           {/* Recording Indicator - Top Right Corner of Video Area */}
           {isRecording ? (
             <div className="absolute top-2 right-2 sm:top-6 sm:right-6 z-[100] flex items-center space-x-2 bg-red-600 px-2 sm:px-3 py-1 sm:py-1.5 rounded-full shadow-lg">
-              <Circle size={6} className="sm:w-2 sm:h-2 fill-white text-white animate-pulse" />
+              <Circle size={8} className="fill-white text-white animate-pulse" />
               <span className="text-[10px] sm:text-xs font-bold uppercase tracking-wider text-white">Recording</span>
             </div>
           ) : null}

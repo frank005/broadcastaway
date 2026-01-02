@@ -2673,7 +2673,7 @@ function BroadcastPageContent() {
         </div>
       )}
 
-      <main className="flex-1 flex overflow-hidden">
+      <main className="flex-1 flex flex-col lg:flex-row overflow-hidden">
         {/* Main Stage */}
         <div className="flex-1 flex flex-col p-6 space-y-4">
           <div className={`flex-1 grid gap-4 ${
@@ -3168,7 +3168,7 @@ function BroadcastPageContent() {
         </div>
 
         {/* Sidebar */}
-        <div className="w-96 bg-gray-900 border-l border-gray-800 flex flex-col">
+        <div className="w-full lg:w-80 xl:w-96 bg-gray-900 border-t lg:border-t-0 lg:border-l border-gray-800 flex flex-col max-h-[50vh] lg:max-h-none">
           <div className="flex border-b border-gray-800">
             <button 
               onClick={() => setActiveTab('chat')}
