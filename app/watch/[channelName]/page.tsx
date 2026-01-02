@@ -242,15 +242,54 @@ function AudiencePageContent() {
           // Use display name from displayNameMap if available (shows original name, not unique RTM ID)
           let displayName = agoraService.displayNameMap?.get(user.uid) || user.displayName;
           
-          // If it's a screen share and we don't have a display name, construct it from the RTM user ID
-          if (isScreenShare && !displayName) {
-            // Extract base username from RTM user ID (e.g., "frank-12345-screen" -> "frank-screen")
-            const baseUserId = rtmUserId.replace(/-screen$/, '');
-            // Try to get the original display name from RTM metadata or use the base user ID
-            const baseDisplayName = agoraService.rtmUserIdToDisplayNameMap?.get(baseUserId) || baseUserId.split('-').slice(0, -1).join('-') || baseUserId;
-            displayName = `${baseDisplayName}-screen`;
-            // Store it in displayNameMap for future reference
-            agoraService.displayNameMap?.set(user.uid, displayName);
+          // If it's a screen share and we don't have a display name, try to get it from RTM metadata
+          if (isScreenShare && !displayName && rtmUserId && agoraService.rtmClient && agoraService.rtmLoggedIn) {
+            try {
+              // First, try to get display name from the screen share user's metadata
+              const screenShareMetadata = await agoraService.rtmClient.storage.getUserMetadata({ userId: rtmUserId });
+              const screenShareDisplayName = screenShareMetadata?.metadata?.displayName?.value;
+              
+              if (screenShareDisplayName) {
+                displayName = screenShareDisplayName;
+              } else {
+                // If not found, try to get the host's display name from the base user ID
+                const baseUserId = rtmUserId.replace(/-screen$/, '');
+                const hostMetadata = await agoraService.rtmClient.storage.getUserMetadata({ userId: baseUserId });
+                const hostDisplayName = hostMetadata?.metadata?.displayName?.value || 
+                                       hostMetadata?.metadata?.username?.value ||
+                                       agoraService.rtmUserIdToDisplayNameMap?.get(baseUserId);
+                
+                if (hostDisplayName) {
+                  // Construct screen share display name from host's display name
+                  displayName = `${hostDisplayName}-screen`;
+                } else {
+                  // Last resort: try to extract from RTM user ID (e.g., "frank-12345-screen" -> "frank")
+                  const parts = baseUserId.split('-');
+                  if (parts.length > 1) {
+                    // Take the first part as the base name (e.g., "frank" from "frank-12345")
+                    displayName = `${parts[0]}-screen`;
+                  } else {
+                    displayName = `${baseUserId}-screen`;
+                  }
+                }
+              }
+              
+              // Store it in displayNameMap for future reference
+              if (displayName) {
+                agoraService.displayNameMap?.set(user.uid, displayName);
+              }
+            } catch (err) {
+              console.warn('⚠️ [AUDIENCE] Failed to get screen share display name from metadata:', err);
+              // Fallback: try to extract from RTM user ID
+              const baseUserId = rtmUserId.replace(/-screen$/, '');
+              const parts = baseUserId.split('-');
+              if (parts.length > 1) {
+                displayName = `${parts[0]}-screen`;
+              } else {
+                displayName = `${baseUserId}-screen`;
+              }
+              agoraService.displayNameMap?.set(user.uid, displayName);
+            }
           }
           
           // Fallback to User-{uid} if still no display name
