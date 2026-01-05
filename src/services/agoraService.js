@@ -237,10 +237,13 @@ class AgoraService {
       return; // Return after waiting, don't try to login again
     }
     
-    // If already logged in, check if user ID changed
+    // If already logged in, check if user ID changed or if client is actually connected
     // If it did, we need to logout and re-login with the new user ID
     if (this.rtmLoggedIn && this.rtmClient) {
       const oldRtmUserId = this.currentUser.rtmUserId;
+      const isActuallyConnected = this.rtmClient.connectionState === 'CONNECTED';
+      
+      // Check if user ID changed or if client is not actually connected
       if (oldRtmUserId && oldRtmUserId !== uniqueRtmUserId) {
         console.warn('⚠️ [RTM] User ID changed, logging out old session...');
         console.warn('⚠️ [RTM] Old RTM User ID:', oldRtmUserId);
@@ -253,8 +256,14 @@ class AgoraService {
         }
         this.rtmLoggedIn = false;
         // Continue to login with new user ID below
+      } else if (!isActuallyConnected) {
+        // Client exists but not actually connected - reset flag and re-login
+        console.warn('⚠️ [RTM] RTM client exists but not connected, resetting state and re-logging in');
+        console.warn('⚠️ [RTM] Connection state:', this.rtmClient.connectionState);
+        this.rtmLoggedIn = false;
+        // Continue to login below
       } else {
-        console.warn('⚠️ [RTM] Already logged in with same user ID, skipping duplicate call');
+        console.warn('⚠️ [RTM] Already logged in with same user ID and connected, skipping duplicate call');
         return;
       }
     }
@@ -2712,9 +2721,21 @@ class AgoraService {
         }
         await this.rtmClient.logout();
         console.log('✅ [LEAVE] RTM client logged out');
+        // Reset RTM login state so user can rejoin with same username
+        this.rtmLoggedIn = false;
+        this.rtmLoggingIn = false;
+        console.log('✅ [LEAVE] RTM login state reset');
       } catch (err) {
         console.error('❌ [LEAVE] Error logging out RTM:', err);
+        // Even if logout fails, reset the flags so user can try again
+        this.rtmLoggedIn = false;
+        this.rtmLoggingIn = false;
+        console.log('✅ [LEAVE] RTM login state reset (after error)');
       }
+    } else {
+      // If no RTM client but flags are set, reset them anyway
+      this.rtmLoggedIn = false;
+      this.rtmLoggingIn = false;
     }
     
     // If host is leaving, ban all remaining users from the channel (after leaving)

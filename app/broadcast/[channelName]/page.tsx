@@ -75,6 +75,7 @@ function BroadcastPageContent() {
   });
   const [isAiMode, setIsAiMode] = useState(false);
   const [isScreenSharing, setIsScreenSharing] = useState(false);
+  const [screenShareSupported, setScreenShareSupported] = useState(false);
   const [mediaPullState, setMediaPullState] = useState({
     isPlaying: false,
     volume: 100,
@@ -167,6 +168,18 @@ function BroadcastPageContent() {
   const [isVirtualBgEnabled, setIsVirtualBgEnabled] = useState(false);
   const virtualBgProcessorRef = useRef<any>(null);
   const previewVideoRef = useRef<HTMLDivElement>(null);
+
+  // Check screenshare support on mount (not supported on most mobile browsers)
+  useEffect(() => {
+    const checkScreenShareSupport = () => {
+      // Check if getDisplayMedia is available (not on most mobile browsers)
+      const supported = typeof navigator !== 'undefined' &&
+        navigator.mediaDevices &&
+        typeof navigator.mediaDevices.getDisplayMedia === 'function';
+      setScreenShareSupported(supported);
+    };
+    checkScreenShareSupport();
+  }, []);
 
   useEffect(() => {
     let isMounted = true; // Prevent state updates after unmount
@@ -2406,8 +2419,8 @@ function BroadcastPageContent() {
   return (
     <div className="flex flex-col h-screen bg-agora-dark text-white overflow-hidden">
       {/* Header */}
-      <header className="flex items-center justify-between px-3 sm:px-4 lg:px-6 py-2 sm:py-3 lg:py-4 bg-agora-dark border-b border-gray-800">
-        <div className="flex items-center space-x-2 sm:space-x-4 min-w-0 flex-1">
+      <header className="flex items-center justify-between px-2 sm:px-4 lg:px-6 py-2 sm:py-3 lg:py-4 bg-agora-dark border-b border-gray-800 overflow-hidden">
+        <div className="flex items-center space-x-1.5 sm:space-x-4 min-w-0 flex-1 overflow-hidden">
           {isBroadcasting ? (
             <div className="flex items-center space-x-2 bg-red-600 px-3 py-1 rounded-full animate-pulse">
               <div className="w-2 h-2 bg-white rounded-full"></div>
@@ -2429,7 +2442,7 @@ function BroadcastPageContent() {
           <span className="text-gray-400 text-xs sm:text-sm hidden sm:inline">|</span>
           <span className="text-gray-400 text-xs sm:text-sm truncate hidden sm:inline">Host: {userName}</span>
         </div>
-        <div className="flex items-center space-x-1 sm:space-x-2 lg:space-x-4 flex-shrink-0">
+        <div className="flex items-center space-x-1 sm:space-x-2 lg:space-x-4 flex-shrink-0 ml-2">
           {!isBroadcasting ? (
             <button 
               onClick={handleStartBroadcast}
@@ -2494,18 +2507,27 @@ function BroadcastPageContent() {
                 toast.error('Failed to copy link');
               }
             }}
-            className="flex items-center justify-center w-10 h-10 rounded-full bg-gray-700 hover:bg-gray-600 transition-colors"
+            className="flex items-center justify-center w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-gray-700 hover:bg-gray-600 transition-colors"
             title="Copy audience join link"
           >
-            <Copy size={18} />
+            <Copy size={16} className="sm:w-[18px] sm:h-[18px]" />
           </button>
         </div>
       </header>
 
       {/* Advanced Statistics Overlay - Only show client stats, detailed stats are on video tiles */}
       {showStats && isBroadcasting && (
-        <div className="absolute top-20 right-4 bg-gray-900/95 backdrop-blur-sm border border-gray-700 rounded-lg p-4 z-40 max-w-sm">
-          <div className="text-sm font-bold mb-2 text-white">Client Statistics</div>
+        <div className="absolute top-16 sm:top-20 right-2 sm:right-4 bg-gray-900/95 backdrop-blur-sm border border-gray-700 rounded-lg p-3 sm:p-4 z-40 max-w-[280px] sm:max-w-sm">
+          <div className="flex items-center justify-between mb-2">
+            <div className="text-sm font-bold text-white">Client Statistics</div>
+            <button
+              onClick={() => setShowStats(false)}
+              className="text-gray-400 hover:text-white text-lg leading-none p-1 -mr-1"
+              aria-label="Close statistics"
+            >
+              ×
+            </button>
+          </div>
           {clientStats && (
             <div className="text-xs text-gray-300 space-y-1 mb-3">
               <div>RTT: {clientStats.RTT || 0}ms</div>
@@ -3096,78 +3118,93 @@ function BroadcastPageContent() {
           </div>
 
           {/* Host Controls */}
-          <div className="flex items-center justify-center space-x-6 py-4 bg-gray-800/50 backdrop-blur-md rounded-2xl border border-gray-700">
-            <button 
-              onClick={toggleMic}
-              className={`p-4 rounded-full transition-all ${isMicOn ? 'bg-gray-700 text-white' : 'bg-red-600 text-white'}`}
-            >
-              {isMicOn ? <Mic size={24} /> : <MicOff size={24} />}
-            </button>
-            <button 
-              onClick={toggleCam}
-              className={`p-4 rounded-full transition-all ${isCamOn ? 'bg-gray-700 text-white' : 'bg-red-600 text-white'}`}
-            >
-              {isCamOn ? <Video size={24} /> : <VideoOff size={24} />}
-            </button>
-            <button 
-              onClick={handleScreenShare}
-              className={`p-4 rounded-full transition-all ${
-                isScreenSharing ? 'bg-agora-blue text-white' : 'bg-gray-700 text-white hover:bg-gray-600'
-              }`}
-            >
-              <ScreenShare size={24} />
-            </button>
-            <div className="h-8 w-px bg-gray-600"></div>
-            {/* Virtual Background Button */}
-            <button
-              onClick={() => setShowVirtualBgModal(true)}
-              className={`p-4 rounded-full transition-all ${
-                isVirtualBgEnabled ? 'bg-agora-blue text-white' : 'bg-gray-700 text-white hover:bg-gray-600'
-              }`}
-              title="Virtual Background"
-            >
-              <Image size={24} />
-            </button>
-            {/* OBS Controls Toggle Button */}
-            <button
-              onClick={() => setObsBarOpen(!obsBarOpen)}
-              className={`p-4 rounded-full transition-all ${
-                obsBarOpen ? 'bg-agora-blue text-white' : 'bg-gray-700 text-white hover:bg-gray-600'
-              }`}
-              title={obsBarOpen ? "Hide OBS Controls" : "Show OBS Controls"}
-            >
-              <Server size={24} />
-            </button>
-            {/* Recording Button */}
-            <button
-              onClick={() => isRecording ? handleStopRecording() : setShowRecordingModal(true)}
-              className={`p-4 rounded-full transition-all ${
-                isRecording ? 'bg-red-600 text-white' : 'bg-gray-700 text-white hover:bg-gray-600'
-              }`}
-              title={isRecording ? "Stop Recording" : "Start Recording"}
-            >
-              <Circle size={24} className={isRecording ? 'fill-white text-white' : 'fill-red-600 text-red-600'} />
-            </button>
-            {/* Recording Links Button */}
-            {(recordingLinks.composite || recordingLinks.webpage) && (
+          <div className="flex items-center justify-between sm:justify-center px-3 sm:px-4 py-3 sm:py-4 bg-gray-800/50 backdrop-blur-md rounded-2xl border border-gray-700">
+            {/* Left Controls - Essential (Mic, Cam, Screen Share) */}
+            <div className="flex items-center space-x-2 sm:space-x-4">
               <button
-                onClick={() => setShowRecordingLinksModal(true)}
-                className="p-4 rounded-full transition-all bg-gray-700 text-white hover:bg-gray-600"
-                title="View Recording Links"
+                onClick={toggleMic}
+                className={`p-2.5 sm:p-4 rounded-full transition-all ${isMicOn ? 'bg-gray-700 text-white' : 'bg-red-600 text-white'}`}
+                title={isMicOn ? "Mute Mic" : "Unmute Mic"}
               >
-                <MoreVertical size={24} />
+                {isMicOn ? <Mic className="w-5 h-5 sm:w-6 sm:h-6" /> : <MicOff className="w-5 h-5 sm:w-6 sm:h-6" />}
               </button>
-            )}
-            {/* STT Button */}
-            <button
-              onClick={() => isSTTRunning ? handleStopSTT() : setShowSTTModal(true)}
-              className={`p-4 rounded-full transition-all ${
-                isSTTRunning ? 'bg-green-600 text-white' : 'bg-gray-700 text-white hover:bg-gray-600'
-              }`}
-              title={isSTTRunning ? "Stop STT" : "Start STT"}
-            >
-              <Languages size={24} className={isSTTRunning ? 'fill-white text-white' : ''} />
-            </button>
+              <button
+                onClick={toggleCam}
+                className={`p-2.5 sm:p-4 rounded-full transition-all ${isCamOn ? 'bg-gray-700 text-white' : 'bg-red-600 text-white'}`}
+                title={isCamOn ? "Turn Off Camera" : "Turn On Camera"}
+              >
+                {isCamOn ? <Video className="w-5 h-5 sm:w-6 sm:h-6" /> : <VideoOff className="w-5 h-5 sm:w-6 sm:h-6" />}
+              </button>
+              {/* Screen Share - Only show if supported (desktop browsers) */}
+              {screenShareSupported && (
+                <button
+                  onClick={handleScreenShare}
+                  className={`p-2.5 sm:p-4 rounded-full transition-all ${
+                    isScreenSharing ? 'bg-agora-blue text-white' : 'bg-gray-700 text-white hover:bg-gray-600'
+                  }`}
+                  title={isScreenSharing ? "Stop Screen Share" : "Start Screen Share"}
+                >
+                  <ScreenShare className="w-5 h-5 sm:w-6 sm:h-6" />
+                </button>
+              )}
+            </div>
+
+            {/* Divider - Hidden on small mobile */}
+            <div className="hidden sm:block h-8 w-px bg-gray-600 mx-2 sm:mx-4"></div>
+
+            {/* Right Controls - Extra Features */}
+            <div className="flex items-center space-x-2 sm:space-x-4">
+              {/* Virtual Background Button */}
+              <button
+                onClick={() => setShowVirtualBgModal(true)}
+                className={`p-2.5 sm:p-4 rounded-full transition-all ${
+                  isVirtualBgEnabled ? 'bg-agora-blue text-white' : 'bg-gray-700 text-white hover:bg-gray-600'
+                }`}
+                title="Virtual Background"
+              >
+                <Image className="w-5 h-5 sm:w-6 sm:h-6" />
+              </button>
+              {/* OBS Controls Toggle Button - Hidden on mobile */}
+              <button
+                onClick={() => setObsBarOpen(!obsBarOpen)}
+                className={`hidden sm:flex p-2.5 sm:p-4 rounded-full transition-all ${
+                  obsBarOpen ? 'bg-agora-blue text-white' : 'bg-gray-700 text-white hover:bg-gray-600'
+                }`}
+                title={obsBarOpen ? "Hide OBS Controls" : "Show OBS Controls"}
+              >
+                <Server className="w-5 h-5 sm:w-6 sm:h-6" />
+              </button>
+              {/* Recording Button */}
+              <button
+                onClick={() => isRecording ? handleStopRecording() : setShowRecordingModal(true)}
+                className={`p-2.5 sm:p-4 rounded-full transition-all ${
+                  isRecording ? 'bg-red-600 text-white' : 'bg-gray-700 text-white hover:bg-gray-600'
+                }`}
+                title={isRecording ? "Stop Recording" : "Start Recording"}
+              >
+                <Circle className={`w-5 h-5 sm:w-6 sm:h-6 ${isRecording ? 'fill-white text-white' : 'fill-red-600 text-red-600'}`} />
+              </button>
+              {/* Recording Links Button - Hidden on mobile unless there are links */}
+              {(recordingLinks.composite || recordingLinks.webpage) && (
+                <button
+                  onClick={() => setShowRecordingLinksModal(true)}
+                  className="hidden sm:flex p-2.5 sm:p-4 rounded-full transition-all bg-gray-700 text-white hover:bg-gray-600"
+                  title="View Recording Links"
+                >
+                  <MoreVertical className="w-5 h-5 sm:w-6 sm:h-6" />
+                </button>
+              )}
+              {/* STT Button */}
+              <button
+                onClick={() => isSTTRunning ? handleStopSTT() : setShowSTTModal(true)}
+                className={`p-2.5 sm:p-4 rounded-full transition-all ${
+                  isSTTRunning ? 'bg-green-600 text-white' : 'bg-gray-700 text-white hover:bg-gray-600'
+                }`}
+                title={isSTTRunning ? "Stop STT" : "Start STT"}
+              >
+                <Languages className={`w-5 h-5 sm:w-6 sm:h-6 ${isSTTRunning ? 'fill-white text-white' : ''}`} />
+              </button>
+            </div>
           </div>
         </div>
 

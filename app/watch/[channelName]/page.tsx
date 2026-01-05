@@ -67,6 +67,7 @@ function AudiencePageContent() {
   const [showStats, setShowStats] = useState(false);
   const [statsData, setStatsData] = useState<Map<number, any>>(new Map());
   const [clientStats, setClientStats] = useState<any>(null);
+  const [pipSupported, setPipSupported] = useState(false);
   const statsIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const hasAddedJoinMessageRef = useRef(false); // Prevent duplicate join messages
   const promotionMessagesShownRef = useRef<Set<string>>(new Set()); // Track shown promotion/demotion messages
@@ -77,6 +78,11 @@ function AudiencePageContent() {
   useEffect(() => {
     console.log('📹 [AUDIENCE] isRecording state changed:', isRecording);
   }, [isRecording]);
+
+  // Check PIP support on mount (client-side only)
+  useEffect(() => {
+    setPipSupported(typeof document !== 'undefined' && !!document.pictureInPictureEnabled);
+  }, []);
   
   // STT State (for audience)
   const [sttTranscriptions, setSttTranscriptions] = useState<Map<number, { text: string; language: string; timestamp: Date }>>(new Map());
@@ -1207,7 +1213,7 @@ function AudiencePageContent() {
             <BarChart3 size={16} />
           </button>
           {/* PIP Button */}
-          {document.pictureInPictureEnabled && (
+          {pipSupported && (
             <button
               onClick={handlePIP}
               className="flex items-center justify-center w-8 h-8 rounded-full bg-gray-700 hover:bg-gray-600 transition-colors text-gray-300"
@@ -1229,8 +1235,17 @@ function AudiencePageContent() {
 
       {/* Advanced Statistics Overlay - Only show client stats, detailed stats are on video tiles */}
       {showStats && (
-        <div className="absolute top-20 right-4 bg-gray-900/95 backdrop-blur-sm border border-gray-700 rounded-lg p-4 z-40 max-w-sm">
-          <div className="text-sm font-bold mb-2 text-white">Client Statistics</div>
+        <div className="absolute top-16 sm:top-20 right-2 sm:right-4 bg-gray-900/95 backdrop-blur-sm border border-gray-700 rounded-lg p-3 sm:p-4 z-40 max-w-[280px] sm:max-w-sm">
+          <div className="flex items-center justify-between mb-2">
+            <div className="text-sm font-bold text-white">Client Statistics</div>
+            <button
+              onClick={() => setShowStats(false)}
+              className="text-gray-400 hover:text-white text-lg leading-none p-1 -mr-1"
+              aria-label="Close statistics"
+            >
+              ×
+            </button>
+          </div>
           {clientStats && (
             <div className="text-xs text-gray-300 space-y-1 mb-3">
               <div>RTT: {clientStats.RTT || 0}ms</div>

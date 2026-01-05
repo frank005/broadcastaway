@@ -176,8 +176,7 @@ function NavigationContent() {
             {/* Logo */}
             <Link href="/browse" className="flex items-center gap-2 text-lg sm:text-xl font-bold text-gray-900">
               <ShoppingBag className="text-agora-blue" size={20} />
-              <span className="hidden xs:inline sm:inline">BroadCastaway</span>
-              <span className="xs:hidden">BC</span>
+              <span>BroadCastaway</span>
             </Link>
 
             {/* Navigation Links - Hidden on mobile */}

@@ -82,13 +82,8 @@ body {
   display: none;
 }
 
-/* Improve touch targets on mobile */
+/* Prevent zoom on iOS when focusing inputs */
 @media (max-width: 640px) {
-  button, a, input, select, textarea {
-    min-height: 44px;
-  }
-
-  /* Prevent zoom on iOS when focusing inputs */
   input[type="text"],
   input[type="email"],
   input[type="password"],
