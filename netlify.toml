@@ -6,6 +6,10 @@
   NODE_VERSION = "18"
   NPM_FLAGS = "--legacy-peer-deps"
 
+[dev]
+  targetPort = 3000
+  port = 8888
+
 [[plugins]]
   package = "@netlify/plugin-nextjs"
 

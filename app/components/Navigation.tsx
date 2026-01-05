@@ -3,13 +3,14 @@
 import { useState, useEffect, useRef, Suspense } from 'react';
 import Link from 'next/link';
 import { usePathname, useSearchParams } from 'next/navigation';
-import { ShoppingBag, Video, Users, Home, Settings, HelpCircle, X } from 'lucide-react';
+import { ShoppingBag, Video, Users, Home, Settings, HelpCircle, X, Menu } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 
 function NavigationContent() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const [showSettings, setShowSettings] = useState(false);
+  const [showMobileMenu, setShowMobileMenu] = useState(false);
   const [userName, setUserName] = useState<string>('');
   const [obsPort, setObsPort] = useState<string>('4455');
   const [obsPassword, setObsPassword] = useState<string>('');
@@ -171,15 +172,16 @@ function NavigationContent() {
     <>
       <nav className="bg-white shadow-sm border-b border-gray-200">
         <div className="container mx-auto px-4">
-          <div className="flex items-center justify-between h-16">
+          <div className="flex items-center justify-between h-14 sm:h-16">
             {/* Logo */}
-            <Link href="/browse" className="flex items-center gap-2 text-xl font-bold text-gray-900">
-              <ShoppingBag className="text-agora-blue" size={24} />
-              <span>BroadCastaway</span>
+            <Link href="/browse" className="flex items-center gap-2 text-lg sm:text-xl font-bold text-gray-900">
+              <ShoppingBag className="text-agora-blue" size={20} />
+              <span className="hidden xs:inline sm:inline">BroadCastaway</span>
+              <span className="xs:hidden">BC</span>
             </Link>
 
-            {/* Navigation Links */}
-            <div className="flex items-center gap-1">
+            {/* Navigation Links - Hidden on mobile */}
+            <div className="hidden md:flex items-center gap-1">
               {navItems.map((item) => {
                 const Icon = item.icon;
                 return (
@@ -199,11 +201,21 @@ function NavigationContent() {
               })}
             </div>
 
-            {/* Right side - User profile icon (clickable for settings) */}
+            {/* Right side - Mobile menu button + User profile */}
             <div className="flex items-center gap-2">
+              {/* Mobile Menu Button */}
+              <button
+                onClick={() => setShowMobileMenu(!showMobileMenu)}
+                className="md:hidden w-10 h-10 flex items-center justify-center rounded-lg hover:bg-gray-100 transition-colors"
+                aria-label="Toggle menu"
+              >
+                {showMobileMenu ? <X size={24} className="text-gray-700" /> : <Menu size={24} className="text-gray-700" />}
+              </button>
+
+              {/* User profile icon */}
               <button
                 onClick={() => setShowSettings(true)}
-                className="w-8 h-8 bg-agora-blue rounded-full flex items-center justify-center hover:bg-blue-600 transition-colors cursor-pointer"
+                className="w-8 h-8 sm:w-9 sm:h-9 bg-agora-blue rounded-full flex items-center justify-center hover:bg-blue-600 transition-colors cursor-pointer"
                 title="Settings"
               >
                 <span className="text-white font-medium text-sm">{getUserInitial()}</span>
@@ -211,17 +223,43 @@ function NavigationContent() {
             </div>
           </div>
         </div>
+
+        {/* Mobile Navigation Menu */}
+        {showMobileMenu && (
+          <div className="md:hidden border-t border-gray-200 bg-white">
+            <div className="container mx-auto px-4 py-2">
+              {navItems.map((item) => {
+                const Icon = item.icon;
+                return (
+                  <Link
+                    key={item.path}
+                    href={item.path}
+                    onClick={() => setShowMobileMenu(false)}
+                    className={`flex items-center gap-3 px-4 py-3 rounded-lg font-medium transition-colors ${
+                      isActive(item.path)
+                        ? 'bg-blue-100 text-agora-blue'
+                        : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
+                    }`}
+                  >
+                    <Icon size={20} />
+                    <span>{item.label}</span>
+                  </Link>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </nav>
 
       {/* Settings Modal */}
       {showSettings && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center">
-          <div className="bg-gray-900 border border-gray-700 rounded-2xl p-6 max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="text-xl font-bold text-white">Settings</h2>
-              <button 
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-2 sm:p-4">
+          <div className="bg-gray-900 border border-gray-700 rounded-2xl p-4 sm:p-6 w-full max-w-2xl max-h-[95vh] sm:max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-4 sm:mb-6">
+              <h2 className="text-lg sm:text-xl font-bold text-white">Settings</h2>
+              <button
                 onClick={() => setShowSettings(false)}
-                className="text-gray-400 hover:text-white text-2xl"
+                className="text-gray-400 hover:text-white text-2xl p-1"
               >
                 ×
               </button>
@@ -441,13 +479,13 @@ function NavigationContent() {
 
       {/* OBS Setup Instructions Modal */}
       {showOBSSetupInstructions && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center">
-          <div className="bg-gray-900 border border-gray-700 rounded-2xl p-6 max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="text-xl font-bold text-white">OBS WebSocket Setup</h2>
-              <button 
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-2 sm:p-4">
+          <div className="bg-gray-900 border border-gray-700 rounded-2xl p-4 sm:p-6 w-full max-w-2xl max-h-[95vh] sm:max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-4 sm:mb-6">
+              <h2 className="text-lg sm:text-xl font-bold text-white">OBS WebSocket Setup</h2>
+              <button
                 onClick={() => setShowOBSSetupInstructions(false)}
-                className="text-gray-400 hover:text-white text-2xl"
+                className="text-gray-400 hover:text-white text-2xl p-1"
               >
                 ×
               </button>

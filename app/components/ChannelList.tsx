@@ -199,19 +199,19 @@ export default function ChannelList() {
   };
 
   return (
-    <div className="max-w-6xl mx-auto p-6">
+    <div className="max-w-6xl mx-auto p-4 sm:p-6">
       {/* Header */}
-      <div className="text-center mb-8">
-        <h1 className="text-3xl font-bold text-gray-900 mb-2">
+      <div className="text-center mb-6 sm:mb-8">
+        <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-2">
           Live Broadcasting Channels
         </h1>
-        <p className="text-gray-600">
+        <p className="text-gray-600 text-sm sm:text-base">
           Discover and join live broadcasts
         </p>
       </div>
 
       {/* Search and Controls */}
-      <div className="flex flex-col sm:flex-row gap-4 mb-6">
+      <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 mb-5 sm:mb-6">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
           <input
@@ -219,14 +219,14 @@ export default function ChannelList() {
             placeholder="Search channels..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-agora-blue focus:border-transparent"
+            className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-agora-blue focus:border-transparent text-base"
           />
         </div>
-        
+
         <button
           onClick={fetchChannels}
           disabled={refreshing}
-          className="flex items-center gap-2 px-4 py-3 bg-agora-blue text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 transition-colors"
+          className="flex items-center justify-center gap-2 px-4 py-3 bg-agora-blue text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 transition-colors font-medium"
         >
           <RefreshCw size={16} className={refreshing ? 'animate-spin' : ''} />
           <span>Refresh</span>
@@ -271,33 +271,33 @@ export default function ChannelList() {
           </p>
         </div>
       ) : (
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-3 sm:gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
           {channels.map((channel) => (
             <div
               key={channel.name}
-              className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 hover:shadow-md transition-shadow"
+              className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 sm:p-6 hover:shadow-md transition-shadow"
             >
-              <div className="mb-4">
-                <h3 className="text-lg font-semibold text-gray-900 mb-2 truncate">
+              <div className="mb-3 sm:mb-4">
+                <h3 className="text-base sm:text-lg font-semibold text-gray-900 mb-1.5 sm:mb-2 truncate">
                   {formatChannelName(channel.name)}
                 </h3>
-                
-                <div className="flex items-center gap-1 text-sm text-gray-500">
+
+                <div className="flex items-center gap-1.5 text-sm text-gray-500">
                   <Users size={16} />
                   <span>{formatViewerCount(channel.hostCount || 0, channel.viewerCount || 0)}</span>
                 </div>
               </div>
 
-              <div className="flex items-center justify-between">
-                <div className="text-xs text-gray-500">
+              <div className="flex items-center justify-between gap-3">
+                <div className="text-xs text-gray-500 truncate">
                   {channel.updatedAt && (
                     <span>Updated {new Date(channel.updatedAt).toLocaleTimeString()}</span>
                   )}
                 </div>
-                
+
                 <button
                   onClick={() => handleJoinChannel(channel.name)}
-                  className="flex items-center gap-2 px-4 py-2 bg-agora-blue text-white rounded-lg hover:bg-blue-600 transition-colors"
+                  className="flex items-center gap-2 px-4 py-2.5 bg-agora-blue text-white rounded-lg hover:bg-blue-600 transition-colors font-medium flex-shrink-0"
                 >
                   <Play size={16} />
                   <span>Watch</span>

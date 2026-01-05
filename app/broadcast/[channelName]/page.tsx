@@ -2713,7 +2713,7 @@ function BroadcastPageContent() {
                     return (
                       <>
                         {/* Language Selection Controls - Top Left */}
-                        <div className="absolute top-2 left-2 z-30 bg-black/90 rounded-lg p-2 space-y-2 min-w-[180px] border border-gray-600">
+                        <div className="absolute top-2 left-2 z-30 bg-black/90 rounded-lg p-1.5 sm:p-2 space-y-1.5 sm:space-y-2 w-[140px] sm:w-[180px] border border-gray-600">
                           <div>
                             <label className="text-xs text-gray-300 mb-1 block font-semibold">Transcription:</label>
                             <select
@@ -2960,7 +2960,7 @@ function BroadcastPageContent() {
                   {isSTTRunning && sttConfig.languages.length > 0 && (
                     <>
                       {/* Language Selection Controls - Top Left */}
-                      <div className="absolute top-2 left-2 z-30 bg-black/90 rounded-lg p-2 space-y-2 min-w-[180px] border border-gray-600">
+                      <div className="absolute top-2 left-2 z-30 bg-black/90 rounded-lg p-1.5 sm:p-2 space-y-1.5 sm:space-y-2 w-[140px] sm:w-[180px] border border-gray-600">
                         <div>
                           <label className="text-xs text-gray-300 mb-1 block font-semibold">Transcription:</label>
                           <select
@@ -3556,16 +3556,16 @@ function BroadcastPageContent() {
 
         {/* OBS Settings Modal */}
         {showOBSSettings && (
-          <div className="absolute inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center">
-            <div className="bg-gray-900 border border-gray-700 rounded-2xl p-6 max-w-4xl w-full mx-4 max-h-[90vh] overflow-hidden flex flex-col">
+          <div className="absolute inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-2 sm:p-4">
+            <div className="bg-gray-900 border border-gray-700 rounded-2xl p-4 sm:p-6 w-full max-w-4xl max-h-[95vh] sm:max-h-[90vh] overflow-hidden flex flex-col">
               <div className="flex items-center justify-between mb-4">
-                <h2 className="text-xl font-bold">OBS Settings</h2>
-                <button 
+                <h2 className="text-lg sm:text-xl font-bold">OBS Settings</h2>
+                <button
                   onClick={() => {
                     setShowOBSSettings(false);
                     setObsSettingsTab('scenes');
                   }}
-                  className="text-gray-400 hover:text-white text-2xl"
+                  className="text-gray-400 hover:text-white text-2xl p-1"
                 >
                   ×
                 </button>
@@ -3584,7 +3584,7 @@ function BroadcastPageContent() {
               ) : (
                 <>
                   {/* Tabs */}
-                  <div className="flex space-x-2 mb-4 border-b border-gray-700 overflow-x-auto">
+                  <div className="flex space-x-1 sm:space-x-2 mb-4 border-b border-gray-700 overflow-x-auto pb-px -mb-px scrollbar-hide">
                     {['scenes', 'collections', 'profiles', 'video', 'audio', 'output', 'stream', 'sources'].map((tab) => (
                       <button
                         key={tab}
@@ -3607,7 +3607,7 @@ function BroadcastPageContent() {
                             await loadOBSSceneItems();
                           }
                         }}
-                        className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+                        className={`px-2 sm:px-4 py-2 text-xs sm:text-sm font-medium border-b-2 transition-colors whitespace-nowrap flex-shrink-0 ${
                           obsSettingsTab === tab
                             ? 'border-agora-blue text-agora-blue'
                             : 'border-transparent text-gray-400 hover:text-gray-300'
@@ -4086,13 +4086,13 @@ function BroadcastPageContent() {
 
         {/* OBS Setup Instructions Modal */}
         {showOBSSetupInstructions && (
-          <div className="absolute inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center">
-            <div className="bg-gray-900 border border-gray-700 rounded-2xl p-6 max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
-              <div className="flex items-center justify-between mb-6">
-                <h2 className="text-xl font-bold">OBS WebSocket Setup</h2>
-                <button 
+          <div className="absolute inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-2 sm:p-4">
+            <div className="bg-gray-900 border border-gray-700 rounded-2xl p-4 sm:p-6 w-full max-w-2xl max-h-[95vh] sm:max-h-[90vh] overflow-y-auto">
+              <div className="flex items-center justify-between mb-4 sm:mb-6">
+                <h2 className="text-lg sm:text-xl font-bold">OBS WebSocket Setup</h2>
+                <button
                   onClick={() => setShowOBSSetupInstructions(false)}
-                  className="text-gray-400 hover:text-white text-2xl"
+                  className="text-gray-400 hover:text-white text-2xl p-1"
                 >
                   ×
                 </button>
@@ -4123,13 +4123,13 @@ function BroadcastPageContent() {
 
         {/* Recording Links Modal */}
         {showRecordingLinksModal && (
-          <div className="absolute inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center">
-            <div className="bg-gray-900 border border-gray-700 rounded-2xl p-6 max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
-              <div className="flex items-center justify-between mb-6">
-                <h2 className="text-xl font-bold">Recording Links</h2>
-                <button 
+          <div className="absolute inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-2 sm:p-4">
+            <div className="bg-gray-900 border border-gray-700 rounded-2xl p-4 sm:p-6 w-full max-w-2xl max-h-[95vh] sm:max-h-[90vh] overflow-y-auto">
+              <div className="flex items-center justify-between mb-4 sm:mb-6">
+                <h2 className="text-lg sm:text-xl font-bold">Recording Links</h2>
+                <button
                   onClick={() => setShowRecordingLinksModal(false)}
-                  className="text-gray-400 hover:text-white text-2xl"
+                  className="text-gray-400 hover:text-white text-2xl p-1"
                 >
                   ×
                 </button>
@@ -4253,13 +4253,13 @@ function BroadcastPageContent() {
 
         {/* Recording Modal */}
         {showRecordingModal && (
-          <div className="absolute inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center">
-            <div className="bg-gray-900 border border-gray-700 rounded-2xl p-6 max-w-md w-full mx-4">
-              <div className="flex items-center justify-between mb-6">
-                <h2 className="text-xl font-bold">Start Cloud Recording</h2>
-                <button 
+          <div className="absolute inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-2 sm:p-4">
+            <div className="bg-gray-900 border border-gray-700 rounded-2xl p-4 sm:p-6 w-full max-w-md max-h-[95vh] sm:max-h-[90vh] overflow-y-auto">
+              <div className="flex items-center justify-between mb-4 sm:mb-6">
+                <h2 className="text-lg sm:text-xl font-bold">Start Cloud Recording</h2>
+                <button
                   onClick={() => setShowRecordingModal(false)}
-                  className="text-gray-400 hover:text-white text-2xl"
+                  className="text-gray-400 hover:text-white text-2xl p-1"
                 >
                   ×
                 </button>
@@ -4319,13 +4319,13 @@ function BroadcastPageContent() {
 
         {/* STT Modal */}
         {showSTTModal && (
-          <div className="absolute inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center">
-            <div className="bg-gray-900 border border-gray-700 rounded-2xl p-6 max-w-4xl w-full mx-4 max-h-[90vh] overflow-y-auto">
-              <div className="flex items-center justify-between mb-6">
-                <h2 className="text-xl font-bold">Speech-to-Text Configuration</h2>
-                <button 
+          <div className="absolute inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-2 sm:p-4">
+            <div className="bg-gray-900 border border-gray-700 rounded-2xl p-4 sm:p-6 w-full max-w-4xl max-h-[95vh] sm:max-h-[90vh] overflow-y-auto">
+              <div className="flex items-center justify-between mb-4 sm:mb-6">
+                <h2 className="text-lg sm:text-xl font-bold">Speech-to-Text Configuration</h2>
+                <button
                   onClick={() => setShowSTTModal(false)}
-                  className="text-gray-400 hover:text-white text-2xl"
+                  className="text-gray-400 hover:text-white text-2xl p-1"
                 >
                   ×
                 </button>
@@ -4578,22 +4578,22 @@ function BroadcastPageContent() {
 
         {/* Virtual Background Modal */}
         {showVirtualBgModal && (
-          <div className="absolute inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center">
-            <div className="bg-gray-900 border border-gray-700 rounded-2xl p-6 max-w-4xl w-full mx-4 max-h-[90vh] overflow-y-auto">
-              <div className="flex items-center justify-between mb-6">
-                <h2 className="text-xl font-bold">Virtual Background</h2>
-                <button 
+          <div className="absolute inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-2 sm:p-4">
+            <div className="bg-gray-900 border border-gray-700 rounded-2xl p-4 sm:p-6 w-full max-w-4xl max-h-[95vh] sm:max-h-[90vh] overflow-y-auto">
+              <div className="flex items-center justify-between mb-4 sm:mb-6">
+                <h2 className="text-lg sm:text-xl font-bold">Virtual Background</h2>
+                <button
                   onClick={() => setShowVirtualBgModal(false)}
-                  className="text-gray-400 hover:text-white text-2xl"
+                  className="text-gray-400 hover:text-white text-2xl p-1"
                 >
                   ×
                 </button>
               </div>
 
-              <div className="grid grid-cols-2 gap-6">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
                 {/* Preview */}
-                <div className="space-y-4">
-                  <h3 className="text-lg font-semibold">Preview</h3>
+                <div className="space-y-3 sm:space-y-4">
+                  <h3 className="text-base sm:text-lg font-semibold">Preview</h3>
                   <div className="relative bg-gray-800 rounded-lg overflow-hidden aspect-video">
                     <div
                       ref={previewVideoRef}
@@ -4611,8 +4611,8 @@ function BroadcastPageContent() {
                 </div>
 
                 {/* Controls */}
-                <div className="space-y-4">
-                  <h3 className="text-lg font-semibold">Background Options</h3>
+                <div className="space-y-3 sm:space-y-4">
+                  <h3 className="text-base sm:text-lg font-semibold">Background Options</h3>
                   
                   {/* Background Type Selection */}
                   <div>
