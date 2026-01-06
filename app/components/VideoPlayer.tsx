@@ -139,7 +139,7 @@ const VideoPlayer = ({ track, user, isLocal = false, showBandwidth = false, band
           }
           
           return (
-            <div className="absolute bottom-4 left-4 bg-black/50 backdrop-blur-md px-3 py-1 rounded-full text-white text-sm flex items-center gap-2">
+            <div className="absolute bottom-4 left-4 bg-black/15 backdrop-blur-md px-3 py-1 rounded-full text-white text-sm flex items-center gap-2">
               {isLocal ? 'You (Host)' : user?.displayName || user?.uid || 'Remote User'}
             </div>
           );

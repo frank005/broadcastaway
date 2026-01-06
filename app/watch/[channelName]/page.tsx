@@ -4,7 +4,7 @@ import { useEffect, useState, useRef, Suspense } from 'react';
 import { useParams, useSearchParams, useRouter } from 'next/navigation';
 import { 
   Mic, MicOff, Video, VideoOff, PhoneOff, 
-  Users, MessageSquare, Share2, Rocket, Hand, BarChart3, PictureInPicture, Circle, Image, Palette, Sparkles, X, Check, Play, Languages
+  Users, MessageSquare, Send, Rocket, Hand, BarChart3, PictureInPicture, Circle, Image, Palette, Sparkles, X, Check, Play, Languages
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import agoraService from '../../../src/services/agoraService';
@@ -1602,7 +1602,7 @@ function AudiencePageContent() {
                       )}
                       {/* Statistics Overlay for promoted user */}
                       {showStats && localStats && (
-                        <div className="absolute bottom-0 left-0 right-0 bg-black/90 backdrop-blur-sm p-3 text-xs text-white max-h-[200px] overflow-y-auto z-20">
+                        <div className="absolute bottom-0 left-0 right-0 bg-black/10 backdrop-blur-sm p-3 text-xs text-white max-h-[200px] overflow-y-auto z-20">
                           <div className="grid grid-cols-2 gap-4">
                             <div>
                               <div className="font-semibold mb-1 text-agora-blue">Network</div>
@@ -1754,7 +1754,7 @@ function AudiencePageContent() {
                 onClick={handleSendMessage}
                 className="p-2 sm:p-2.5 lg:p-3 bg-agora-blue rounded-2xl text-white hover:bg-blue-600 transition-all shadow-lg shadow-blue-500/20 flex-shrink-0"
               >
-                <Share2 size={18} className="sm:w-5 sm:h-5 lg:w-[22px] lg:h-[22px]" />
+                <Send size={18} className="sm:w-5 sm:h-5 lg:w-[22px] lg:h-[22px]" />
               </button>
             </div>
           </div>

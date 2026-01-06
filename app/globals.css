@@ -93,3 +93,27 @@ body {
   }
 }
 
+/* Mobile landscape video sizing */
+@media (max-width: 1024px) and (orientation: landscape) {
+  .video-container-mobile {
+    min-height: 50vh !important;
+    max-height: 50vh !important;
+  }
+  
+  /* Allow scrolling in landscape to access controls */
+  main {
+    overflow-y: auto !important;
+  }
+}
+
+@media (max-width: 1024px) and (orientation: portrait) {
+  .video-container-mobile {
+    min-height: 40vh !important;
+  }
+  
+  /* Prevent scrolling on main in portrait - only chat should scroll */
+  main {
+    overflow-y: hidden !important;
+  }
+}
+

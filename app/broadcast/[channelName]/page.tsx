@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback, useRef, Suspense } from 'react';
 import { useParams, useSearchParams, useRouter } from 'next/navigation';
 import { 
   Mic, MicOff, Video, VideoOff, ScreenShare, PhoneOff, 
-  Users, Settings, Share2, Rocket, Download, Server, Bot, Play, Pause,
+  Users, Settings, Send, Rocket, Download, Server, Bot, Play, Pause,
   Check, X, RefreshCw, Upload, Clock, Copy, HelpCircle, User, BarChart3, Circle, MoreVertical, Image, Palette, Sparkles, Languages
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
@@ -2705,7 +2705,7 @@ function BroadcastPageContent() {
           <div className={`flex-1 grid gap-2 sm:gap-4 ${
             remoteUsers.length + (isBroadcasting && localVideoTrack ? 1 : 0) > 1 ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-1'
           }`}>
-            <div className="relative group">
+            <div className="relative group w-full video-container-mobile sm:video-container-mobile" style={{ height: '100%' }}>
               {showCamera && isBroadcasting && localVideoTrack ? (
                 <>
                   <VideoPlayer 
@@ -2854,7 +2854,7 @@ function BroadcastPageContent() {
                     if (!localStats) return null;
                     
                     return (
-                      <div className="absolute bottom-0 left-0 right-0 bg-black/90 backdrop-blur-sm p-3 text-xs text-white max-h-[200px] overflow-y-auto z-20">
+                      <div className="absolute bottom-0 left-0 right-0 bg-black/10 backdrop-blur-sm p-3 text-xs text-white max-h-[200px] overflow-y-auto z-20">
                         <div className="grid grid-cols-2 gap-4">
                           <div>
                             <div className="font-semibold mb-1 text-agora-blue">Network</div>
@@ -2967,7 +2967,7 @@ function BroadcastPageContent() {
                 : undefined;
               
               return (
-                <div key={user.uid} className="relative group">
+                <div key={user.uid} className="relative group w-full video-container-mobile sm:video-container-mobile" style={{ height: '100%' }}>
                   <VideoPlayer 
                     track={user.videoTrack} 
                     user={{ ...user, uid: displayName, rtmUserId, originalUid: user.uid }}
@@ -3077,7 +3077,7 @@ function BroadcastPageContent() {
                   )}
                   {/* Statistics Overlay - Comprehensive stats like rtc-signaling */}
                   {showStats && userStats && (
-                    <div className="absolute bottom-0 left-0 right-0 bg-black/90 backdrop-blur-sm p-3 text-xs text-white max-h-[200px] overflow-y-auto z-20">
+                    <div className="absolute bottom-0 left-0 right-0 bg-black/10 backdrop-blur-sm p-3 text-xs text-white max-h-[200px] overflow-y-auto z-20">
                       <div className="grid grid-cols-2 gap-4">
                         <div>
                           <div className="font-semibold mb-1 text-agora-blue">Network</div>
@@ -3118,9 +3118,9 @@ function BroadcastPageContent() {
           </div>
 
           {/* Host Controls */}
-          <div className="flex items-center justify-between sm:justify-center px-3 sm:px-4 py-3 sm:py-4 bg-gray-800/50 backdrop-blur-md rounded-2xl border border-gray-700">
+          <div className="flex items-center justify-center px-2 sm:px-4 py-3 sm:py-4 bg-gray-800/50 backdrop-blur-md rounded-2xl border border-gray-700">
             {/* Left Controls - Essential (Mic, Cam, Screen Share) */}
-            <div className="flex items-center space-x-2 sm:space-x-4">
+            <div className="flex items-center space-x-1 sm:space-x-4">
               <button
                 onClick={toggleMic}
                 className={`p-2.5 sm:p-4 rounded-full transition-all ${isMicOn ? 'bg-gray-700 text-white' : 'bg-red-600 text-white'}`}
@@ -3149,11 +3149,11 @@ function BroadcastPageContent() {
               )}
             </div>
 
-            {/* Divider - Hidden on small mobile */}
-            <div className="hidden sm:block h-8 w-px bg-gray-600 mx-2 sm:mx-4"></div>
+            {/* Divider - Show on all screen sizes */}
+            <div className="h-8 w-px bg-gray-600 mx-1 sm:mx-4"></div>
 
             {/* Right Controls - Extra Features */}
-            <div className="flex items-center space-x-2 sm:space-x-4">
+            <div className="flex items-center space-x-1 sm:space-x-4">
               {/* Virtual Background Button */}
               <button
                 onClick={() => setShowVirtualBgModal(true)}
@@ -3164,7 +3164,7 @@ function BroadcastPageContent() {
               >
                 <Image className="w-5 h-5 sm:w-6 sm:h-6" />
               </button>
-              {/* OBS Controls Toggle Button - Hidden on mobile */}
+              {/* OBS Controls Toggle Button - Hidden on small phones in portrait */}
               <button
                 onClick={() => setObsBarOpen(!obsBarOpen)}
                 className={`hidden sm:flex p-2.5 sm:p-4 rounded-full transition-all ${
@@ -3581,11 +3581,11 @@ function BroadcastPageContent() {
               <button 
                 onClick={handleSendMessage}
                 disabled={!rtmLoggedIn}
-                className={`p-2 bg-agora-blue rounded-xl text-white flex-shrink-0 ${
+                className={`p-2 bg-agora-blue rounded-xl text-white flex-shrink-0 hover:bg-blue-600 transition-all ${
                   !rtmLoggedIn ? 'opacity-50 cursor-not-allowed' : ''
                 }`}
               >
-                <Share2 size={18} className="sm:w-5 sm:h-5" />
+                <Send size={18} className="sm:w-5 sm:h-5" />
               </button>
             </div>
           </div>
