@@ -104,6 +104,8 @@ class AgoraService {
     this.onTranscriptionReceived = null; // Callback: (uid, text, language) => void
     this.onTranslationReceived = null; // Callback: (uid, text, sourceLang, targetLang) => void
     this.sttSubscribedLanguages = new Map(); // uid -> { transcription: string[], translation: Map<sourceLang, targetLang[]> }
+    // AI Agent state
+    this.currentAgentId = null; // Current AI agent ID
   }
 
   // Hash username to numeric UID for RTC (RTM can use string, RTC needs number)
@@ -2283,6 +2285,10 @@ class AgoraService {
 
   // AI Agent Logic
   async startAiAgent(prompt) {
+    if (!this.channelName) {
+      throw new Error('Channel name is required to start AI agent');
+    }
+
     const url = `/api/agora-agents`;
     const body = {
       action: 'start',
@@ -2300,7 +2306,36 @@ class AgoraService {
       const response = await axios.post(url, body);
       console.log('✅ [AI AGENT] Response status:', response.status);
       console.log('✅ [AI AGENT] Response data:', JSON.stringify(response.data, null, 2));
-      return response;
+      
+      // Handle response structure: { success: true, data: { agent_id, ... } }
+      const responseData = response.data;
+      if (responseData.success && responseData.data) {
+        const agentData = responseData.data;
+        const agentId = agentData.agent_id || agentData.agentId;
+        if (agentId) {
+          this.currentAgentId = agentId;
+          console.log('✅ [AI AGENT] Agent started with ID:', agentId);
+          return {
+            success: true,
+            agentId: agentId,
+            data: agentData
+          };
+        } else {
+          throw new Error('No agent_id in response');
+        }
+      } else if (responseData.agent_id || responseData.agentId) {
+        // Handle direct response format
+        const agentId = responseData.agent_id || responseData.agentId;
+        this.currentAgentId = agentId;
+        console.log('✅ [AI AGENT] Agent started with ID:', agentId);
+        return {
+          success: true,
+          agentId: agentId,
+          data: responseData
+        };
+      } else {
+        throw new Error('Invalid response format - no agent_id found');
+      }
     } catch (err) {
       console.error('❌ [AI AGENT] Request failed:', err);
       console.error('❌ [AI AGENT] Error details:', {
@@ -2309,6 +2344,49 @@ class AgoraService {
         status: err.response?.status
       });
       throw err;
+    }
+  }
+
+  async stopAiAgent(agentId = null) {
+    const agentToStop = agentId || this.currentAgentId;
+    if (!agentToStop) {
+      console.warn('⚠️ [AI AGENT] No agent to stop');
+      return { success: true }; // Return success if no agent to stop
+    }
+
+    try {
+      console.log(`🛑 [AI AGENT] Attempting to stop agent: ${agentToStop}`);
+      
+      const url = `/api/agora-agents`;
+      const body = {
+        action: 'stop',
+        agentId: agentToStop
+      };
+
+      const response = await axios.post(url, body);
+      
+      if (response.status !== 200) {
+        const errorData = response.data;
+        console.warn('⚠️ [AI AGENT] Agent stop API failed:', errorData?.error || 'Failed to stop agent');
+        // Don't throw, just log the warning
+      } else {
+        const data = response.data;
+        console.log('✅ [AI AGENT] Agora agent stopped:', data);
+      }
+      
+      // Always clear current agent info regardless of API success
+      if (agentId === this.currentAgentId || !agentId) {
+        this.currentAgentId = null;
+      }
+      
+      return { success: true };
+    } catch (err) {
+      console.warn('⚠️ [AI AGENT] Error stopping Agora agent (continuing anyway):', err.message);
+      // Always clear current agent info even if there's an error
+      if (agentId === this.currentAgentId || !agentId) {
+        this.currentAgentId = null;
+      }
+      return { success: true }; // Don't throw, just return success
     }
   }
 

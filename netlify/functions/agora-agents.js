@@ -75,7 +75,7 @@ exports.handler = async (event) => {
             input_modalities: ["text"],
             output_modalities: ["text"],
             params: {
-              model: process.env.OPENAI_MODEL || "gpt-4o",
+              model: process.env.OPENAI_MODEL || "o-mini",
               temperature: parseFloat(process.env.OPENAI_TEMPERATURE) || 0.2,
               max_tokens: parseInt(process.env.OPENAI_MAX_TOKENS) || 1000
             }

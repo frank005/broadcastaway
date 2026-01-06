@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Search, Users, Play, RefreshCw, AlertCircle } from 'lucide-react';
+import { Search, Users, Play, RefreshCw, AlertCircle, Clock } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 
 interface Channel {
@@ -20,6 +20,7 @@ export default function ChannelList() {
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [refreshing, setRefreshing] = useState(false);
+  const [autoRefreshEnabled, setAutoRefreshEnabled] = useState(false);
   const abortControllerRef = useRef<AbortController | null>(null);
   const isFetchingRef = useRef(false);
 
@@ -46,15 +47,15 @@ export default function ChannelList() {
   };
 
   const fetchChannels = useCallback(async () => {
-    // Prevent multiple simultaneous requests
-    if (isFetchingRef.current) {
-      console.log('⏸️ [CHANNEL LIST] Request already in progress, skipping...');
-      return;
-    }
-
-    // Cancel any previous request
+    // Cancel any previous request first
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
+    }
+    
+    // Reset fetching state if it was stuck
+    if (isFetchingRef.current) {
+      console.log('🔄 [CHANNEL LIST] Resetting stuck fetch state...');
+      isFetchingRef.current = false;
     }
 
     // Create new abort controller for this request
@@ -65,6 +66,7 @@ export default function ChannelList() {
     try {
       setError(null);
       setRefreshing(true);
+      setLoading(true); // Ensure loading state is set
       
       const params = new URLSearchParams({
         page: '0',
@@ -95,9 +97,16 @@ export default function ChannelList() {
       if (data.success) {
         console.log('📊 [CHANNEL LIST] Step 1 - Channel list received:', data.channels);
         
-        // Step 2: For each channel, get host and audience information
+        // Step 2: Batch fetch host info for all channels at once
+        // Instead of individual calls, we could batch this, but for now we'll add a small delay
+        // to prevent overwhelming the API
         const channelsWithHosts = await Promise.all(
-          data.channels.map(async (channel: Channel) => {
+          data.channels.map(async (channel: Channel, index: number) => {
+            // Stagger requests slightly to reduce load spikes
+            if (index > 0 && index % 5 === 0) {
+              await new Promise(resolve => setTimeout(resolve, 100));
+            }
+            
             const hostInfo = await fetchHostInfo(channel.name);
             console.log(`📊 [CHANNEL LIST] Step 2 - Host info for ${channel.name}:`, hostInfo);
             
@@ -127,14 +136,23 @@ export default function ChannelList() {
       // Don't set error if request was aborted
       if (err.name === 'AbortError') {
         console.log('⏸️ [CHANNEL LIST] Request aborted');
+        // Still reset state even if aborted
+        setLoading(false);
+        setRefreshing(false);
+        isFetchingRef.current = false;
         return;
       }
-      setError(err.message);
+      console.error('❌ [CHANNEL LIST] Error fetching channels:', err);
+      setError(err.message || 'Failed to fetch channels');
+      setLoading(false);
+      setRefreshing(false);
     } finally {
+      // Always reset fetching state, even if aborted
       if (!controller.signal.aborted) {
         setLoading(false);
         setRefreshing(false);
       }
+      // Always reset the fetching ref to allow new requests
       isFetchingRef.current = false;
     }
   }, [searchTerm]);
@@ -143,24 +161,42 @@ export default function ChannelList() {
     fetchChannels();
   }, [fetchChannels]);
 
-  // Auto-refresh every 10 seconds
+  // Auto-refresh is disabled by default to reduce function calls
+  // Users can enable it via the toggle button in the UI
   useEffect(() => {
     if (searchTerm.trim()) return; // Don't auto-refresh when searching
+    if (!autoRefreshEnabled) return; // Only refresh if enabled by user
     
-    const interval = setInterval(() => {
-      if (!isFetchingRef.current) {
+    // Get refresh interval from env, or default to 30 seconds
+    const refreshMs = parseInt(process.env.NEXT_PUBLIC_CHANNEL_LIST_REFRESH_MS || '30000');
+    const intervalMs = refreshMs > 0 ? refreshMs : 30000;
+    
+    // Only refresh if page is visible
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && !isFetchingRef.current) {
         fetchChannels();
       }
-    }, 10000);
+    };
+    
+    const interval = setInterval(() => {
+      // Only refresh if page is visible and not already fetching
+      if (document.visibilityState === 'visible' && !isFetchingRef.current) {
+        fetchChannels();
+      }
+    }, intervalMs);
+
+    // Also refresh when page becomes visible again
+    document.addEventListener('visibilitychange', handleVisibilityChange);
 
     return () => {
       clearInterval(interval);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
       // Cleanup: abort any in-flight request when component unmounts
       if (abortControllerRef.current) {
         abortControllerRef.current.abort();
       }
     };
-  }, [fetchChannels, searchTerm]);
+  }, [fetchChannels, searchTerm, autoRefreshEnabled]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -223,14 +259,36 @@ export default function ChannelList() {
           />
         </div>
 
-        <button
-          onClick={fetchChannels}
-          disabled={refreshing}
-          className="flex items-center justify-center gap-2 px-4 py-3 bg-agora-blue text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 transition-colors font-medium"
-        >
-          <RefreshCw size={16} className={refreshing ? 'animate-spin' : ''} />
-          <span>Refresh</span>
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={fetchChannels}
+            disabled={refreshing}
+            className="flex items-center justify-center gap-2 px-4 py-3 bg-agora-blue text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 transition-colors font-medium"
+          >
+            <RefreshCw size={16} className={refreshing ? 'animate-spin' : ''} />
+            <span>Refresh</span>
+          </button>
+          <button
+            onClick={() => setAutoRefreshEnabled(!autoRefreshEnabled)}
+            className={`flex items-center justify-center gap-2 px-4 py-3 rounded-lg transition-colors font-medium ${
+              autoRefreshEnabled
+                ? 'bg-green-500 text-white hover:bg-green-600'
+                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+            }`}
+            title={autoRefreshEnabled ? 'Auto-refresh enabled (click to disable)' : 'Auto-refresh disabled (click to enable)'}
+          >
+            <Clock size={16} className={autoRefreshEnabled ? 'animate-pulse' : ''} />
+            <span className="hidden sm:inline">{autoRefreshEnabled ? 'Auto' : 'Manual'}</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Info Note */}
+      <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-800">
+        <p>
+          <strong>Note:</strong> Auto-refresh is disabled by default to reduce server load. 
+          Click the <strong>Refresh</strong> button to update the channel list, or enable <strong>Auto</strong> for automatic updates.
+        </p>
       </div>
 
       {/* Stats */}

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useRef, Suspense } from 'react';
+import { useEffect, useState, useCallback, useRef, Suspense } from 'react';
 import { useParams, useSearchParams, useRouter } from 'next/navigation';
 import { 
   Mic, MicOff, Video, VideoOff, PhoneOff, 
@@ -99,8 +99,19 @@ function AudiencePageContent() {
   const [virtualBgBlur, setVirtualBgBlur] = useState(2); // 1=Low, 2=Medium, 3=High
   const [selectedPreset, setSelectedPreset] = useState<string>('');
   const [isVirtualBgEnabled, setIsVirtualBgEnabled] = useState(false);
+  const [videoThumbnails, setVideoThumbnails] = useState<Record<string, string>>({});
   const virtualBgProcessorRef = useRef<any>(null);
   const previewVideoRef = useRef<HTMLDivElement>(null);
+  const previewTrackRef = useRef<any>(null); // Store cloned track for preview
+  const previewProcessorRef = useRef<any>(null); // Store processor for preview track
+  
+  // Store original state when modal opens (for cancel functionality)
+  const originalVirtualBgStateRef = useRef<{
+    type: 'none' | 'blur' | 'color' | 'image' | 'video';
+    color: string;
+    blur: number;
+    preset: string;
+  } | null>(null);
 
   useEffect(() => {
     // Check if name exists in URL params or localStorage
@@ -651,8 +662,79 @@ function AudiencePageContent() {
     ]
   };
 
+  // Generate thumbnail from video URL
+  const generateVideoThumbnail = useCallback(async (videoUrl: string, presetId: string): Promise<string | null> => {
+    return new Promise((resolve) => {
+      const video = document.createElement('video');
+      video.crossOrigin = 'anonymous';
+      video.muted = true;
+      video.preload = 'metadata';
+      
+      let timeoutId: NodeJS.Timeout;
+      let resolved = false;
+      
+      const cleanup = () => {
+        if (timeoutId) clearTimeout(timeoutId);
+        video.src = '';
+        video.remove();
+      };
+      
+      const resolveOnce = (value: string | null) => {
+        if (!resolved) {
+          resolved = true;
+          cleanup();
+          resolve(value);
+        }
+      };
+      
+      // Set timeout (10 seconds)
+      timeoutId = setTimeout(() => {
+        console.warn('Thumbnail generation timeout for', presetId);
+        resolveOnce(null);
+      }, 10000);
+      
+      video.onloadedmetadata = () => {
+        try {
+          // Seek to 1 second or 10% of video duration, whichever is smaller
+          const seekTime = Math.min(1, video.duration * 0.1);
+          video.currentTime = seekTime;
+        } catch (error) {
+          console.warn('Error seeking video:', error);
+          resolveOnce(null);
+        }
+      };
+      
+      video.onseeked = () => {
+        try {
+          const canvas = document.createElement('canvas');
+          canvas.width = video.videoWidth;
+          canvas.height = video.videoHeight;
+          const ctx = canvas.getContext('2d');
+          if (ctx && video.videoWidth > 0 && video.videoHeight > 0) {
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            const thumbnailUrl = canvas.toDataURL('image/jpeg', 0.8);
+            setVideoThumbnails(prev => ({ ...prev, [presetId]: thumbnailUrl }));
+            resolveOnce(thumbnailUrl);
+          } else {
+            resolveOnce(null);
+          }
+        } catch (error) {
+          console.warn('Failed to generate video thumbnail:', error);
+          resolveOnce(null);
+        }
+      };
+      
+      video.onerror = (e) => {
+        console.warn('Failed to load video for thumbnail generation:', e);
+        resolveOnce(null);
+      };
+      
+      video.src = videoUrl;
+    });
+  }, []);
+
   // Load media with CORS handling
-  const loadMediaWithCORS = async (url: string, type: 'img' | 'video'): Promise<HTMLImageElement | HTMLVideoElement> => {
+  const loadMediaWithCORS = useCallback(async (url: string, type: 'img' | 'video'): Promise<HTMLImageElement | HTMLVideoElement> => {
     return new Promise((resolve, reject) => {
       if (type === 'img') {
         const img = document.createElement('img');
@@ -670,9 +752,183 @@ function AudiencePageContent() {
         video.src = url;
       }
     });
-  };
+  }, []);
 
-  // Apply virtual background
+  // Apply virtual background to preview track (for modal preview)
+  const applyPreviewVirtualBackground = useCallback(async (track: any, processorRef: React.MutableRefObject<any>) => {
+    if (!track) return;
+
+    try {
+      // Wait for VirtualBackgroundExtension to be available
+      const waitForVB = () => {
+        return new Promise((resolve, reject) => {
+          let attempts = 0;
+          const check = () => {
+            attempts++;
+            if ((window as any).VirtualBackgroundExtension) {
+              resolve((window as any).VirtualBackgroundExtension);
+            } else if (attempts >= 50) {
+              reject(new Error('VirtualBackgroundExtension failed to load'));
+            } else {
+              setTimeout(check, 200);
+            }
+          };
+          check();
+        });
+      };
+
+      const VirtualBackgroundExtensionClass = await waitForVB() as any;
+      const AgoraRTC = (window as any).AgoraRTC;
+
+      if (!AgoraRTC) {
+        console.error('AgoraRTC not available');
+        return;
+      }
+
+      if (virtualBgType === 'none') {
+        // Remove processor if virtual background is disabled
+        if (processorRef.current) {
+          try {
+            await track.unpipe();
+            await processorRef.current.unpipe();
+            await processorRef.current.disable();
+            await processorRef.current.release();
+            processorRef.current = null;
+          } catch (e) {
+            console.warn('Error removing preview processor:', e);
+          }
+        }
+        return;
+      }
+
+      // If processor exists, just update options instead of recreating
+      if (processorRef.current) {
+        try {
+          // Set options based on type
+          const options: any = {
+            type: virtualBgType === 'image' ? 'img' : virtualBgType === 'video' ? 'video' : virtualBgType,
+            fit: 'cover'
+          };
+
+          if (virtualBgType === 'color') {
+            options.color = virtualBgColor;
+          } else if (virtualBgType === 'blur') {
+            options.blurDegree = virtualBgBlur;
+          } else if (virtualBgType === 'image') {
+            if (!selectedPreset) {
+              return; // No preset selected yet
+            }
+            const preset = virtualBgPresets.images.find(p => p.id === selectedPreset);
+            if (!preset) {
+              return;
+            }
+            try {
+              options.source = await loadMediaWithCORS(preset.url, 'img');
+            } catch (error: any) {
+              console.error(`Failed to load image: ${error.message}`);
+              return;
+            }
+          } else if (virtualBgType === 'video') {
+            if (!selectedPreset) {
+              return; // No preset selected yet
+            }
+            const preset = virtualBgPresets.videos.find(p => p.id === selectedPreset);
+            if (!preset) {
+              return;
+            }
+            try {
+              options.source = await loadMediaWithCORS(preset.url, 'video');
+            } catch (error: any) {
+              console.error(`Failed to load video: ${error.message}`);
+              return;
+            }
+          }
+
+          // Update options without recreating processor
+          processorRef.current.setOptions(options);
+          return; // Exit early - processor already exists and is updated
+        } catch (e) {
+          console.warn('Error updating preview processor options, will recreate:', e);
+          // If update fails, fall through to recreate processor
+        }
+      }
+
+      // Remove existing preview processor if update failed or doesn't exist
+      if (processorRef.current) {
+        try {
+          await track.unpipe();
+          await processorRef.current.unpipe();
+          await processorRef.current.disable();
+          await processorRef.current.release();
+          processorRef.current = null;
+        } catch (e) {
+          console.warn('Error removing existing preview processor:', e);
+        }
+      }
+
+      // Register extension
+      const vb = new VirtualBackgroundExtensionClass();
+      AgoraRTC.registerExtensions([vb]);
+
+      // Create processor
+      const processor = await vb.createProcessor();
+
+      // Initialize processor
+      await processor.init('not_needed');
+
+      // Set options based on type
+      const options: any = {
+        type: virtualBgType === 'image' ? 'img' : virtualBgType === 'video' ? 'video' : virtualBgType,
+        fit: 'cover'
+      };
+
+      if (virtualBgType === 'color') {
+        options.color = virtualBgColor;
+      } else if (virtualBgType === 'blur') {
+        options.blurDegree = virtualBgBlur;
+      } else if (virtualBgType === 'image') {
+        if (!selectedPreset) {
+          return; // No preset selected yet
+        }
+        const preset = virtualBgPresets.images.find(p => p.id === selectedPreset);
+        if (!preset) {
+          return;
+        }
+        try {
+          options.source = await loadMediaWithCORS(preset.url, 'img');
+        } catch (error: any) {
+          console.error(`Failed to load image: ${error.message}`);
+          return;
+        }
+      } else if (virtualBgType === 'video') {
+        if (!selectedPreset) {
+          return; // No preset selected yet
+        }
+        const preset = virtualBgPresets.videos.find(p => p.id === selectedPreset);
+        if (!preset) {
+          return;
+        }
+        try {
+          options.source = await loadMediaWithCORS(preset.url, 'video');
+        } catch (error: any) {
+          console.error(`Failed to load video: ${error.message}`);
+          return;
+        }
+      }
+
+      processor.setOptions(options);
+      await processor.enable();
+
+      // Pipe the processor to the preview track
+      await track.pipe(processor).pipe(track.processorDestination);
+
+      processorRef.current = processor;
+    } catch (error: any) {
+      console.error('Error applying preview virtual background:', error);
+    }
+  }, [virtualBgType, virtualBgColor, virtualBgBlur, selectedPreset, virtualBgPresets, loadMediaWithCORS]);
+
+  // Apply virtual background to original track (when Apply is clicked)
   const applyVirtualBackground = async () => {
     if (!localVideoTrack || !agoraService.localVideoTrack) {
       toast.error('No video track available');
@@ -858,27 +1114,124 @@ function AudiencePageContent() {
     }
   };
 
-  // Setup preview video when modal opens
+  // Setup preview video when modal opens and store original state
   useEffect(() => {
     if (showVirtualBgModal && localVideoTrack && previewVideoRef.current) {
+      // Store original state when modal opens (for cancel functionality)
+      originalVirtualBgStateRef.current = {
+        type: virtualBgType,
+        color: virtualBgColor,
+        blur: virtualBgBlur,
+        preset: selectedPreset
+      };
+      
+      // Note: We don't apply virtual background here - it's only applied when "Apply" is clicked
+      // The state changes in the modal are just for UI preview/selection
+      
       const containerElement = previewVideoRef.current;
       containerElement.innerHTML = '';
-      try {
-        localVideoTrack.play(containerElement);
-      } catch (err) {
-        console.error('Error playing preview:', err);
-      }
-      return () => {
+      
+      // Clone the track for preview (so we don't interfere with the main broadcast track)
+      const setupPreview = async () => {
         try {
-          if (containerElement) {
-            localVideoTrack.stop(containerElement);
+          // Clean up any existing preview track and processor
+          if (previewProcessorRef.current) {
+            try {
+              if (previewTrackRef.current) {
+                await previewTrackRef.current.unpipe();
+                await previewProcessorRef.current.unpipe();
+                await previewProcessorRef.current.disable();
+                await previewProcessorRef.current.release();
+              }
+            } catch (e) {
+              // Ignore cleanup errors
+            }
+            previewProcessorRef.current = null;
           }
+          
+          if (previewTrackRef.current) {
+            try {
+              await previewTrackRef.current.stop();
+              previewTrackRef.current.close();
+            } catch (e) {
+              // Ignore cleanup errors
+            }
+            previewTrackRef.current = null;
+          }
+          
+          // Clone the track for preview
+          const clonedTrack = await localVideoTrack.clone();
+          previewTrackRef.current = clonedTrack;
+          
+          // Apply virtual background to preview track
+          await applyPreviewVirtualBackground(clonedTrack, previewProcessorRef);
+          
+          // Play the cloned track in the preview container
+          await clonedTrack.play(containerElement);
         } catch (err) {
-          // Ignore errors when stopping
+          console.error('Error setting up preview:', err);
         }
+      };
+      
+      setupPreview();
+      
+      return () => {
+        // Clean up the cloned preview track and processor when modal closes
+        const cleanup = async () => {
+          try {
+            if (previewProcessorRef.current) {
+              try {
+                if (previewTrackRef.current) {
+                  await previewTrackRef.current.unpipe();
+                  await previewProcessorRef.current.unpipe();
+                  await previewProcessorRef.current.disable();
+                  await previewProcessorRef.current.release();
+                }
+              } catch (e) {
+                // Ignore cleanup errors
+              }
+              previewProcessorRef.current = null;
+            }
+            if (previewTrackRef.current) {
+              await previewTrackRef.current.stop();
+              previewTrackRef.current.close();
+              previewTrackRef.current = null;
+            }
+            if (containerElement) {
+              containerElement.innerHTML = '';
+            }
+          } catch (err) {
+            // Ignore cleanup errors
+            console.warn('Error cleaning up preview track:', err);
+          }
+        };
+        cleanup();
       };
     }
   }, [showVirtualBgModal, localVideoTrack]);
+
+  // Update preview when settings change (only when modal is open)
+  useEffect(() => {
+    if (showVirtualBgModal && previewTrackRef.current) {
+      // Update the preview with current settings
+      applyPreviewVirtualBackground(previewTrackRef.current, previewProcessorRef);
+    }
+  }, [showVirtualBgModal, applyPreviewVirtualBackground]);
+
+  // Pre-generate video thumbnails when video type is selected
+  useEffect(() => {
+    if (virtualBgType === 'video' && showVirtualBgModal) {
+      virtualBgPresets.videos.forEach((preset) => {
+        // Only generate if we don't already have a thumbnail
+        if (!videoThumbnails[preset.id]) {
+          // Try to generate thumbnail immediately
+          generateVideoThumbnail(preset.url, preset.id).catch((err) => {
+            console.warn(`Failed to pre-generate thumbnail for ${preset.id}:`, err);
+          });
+        }
+      });
+    }
+  }, [virtualBgType, showVirtualBgModal, generateVideoThumbnail]);
 
   const handleLeave = async () => {
     const timestamp = new Date().toLocaleTimeString();
@@ -1932,9 +2285,25 @@ function AudiencePageContent() {
                           }`}
                         >
                           <img
-                            src={preset.thumbnail}
+                            src={videoThumbnails[preset.id] || preset.thumbnail}
                             alt={preset.name}
                             className="w-full h-full object-cover"
+                            onError={async (e) => {
+                              // If thumbnail fails to load, try to generate one from the video
+                              const img = e.target as HTMLImageElement;
+                              if (!videoThumbnails[preset.id]) {
+                                const generatedThumbnail = await generateVideoThumbnail(preset.url, preset.id);
+                                if (generatedThumbnail) {
+                                  img.src = generatedThumbnail;
+                                } else {
+                                  // Fallback to a placeholder
+                                  img.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAwIiBoZWlnaHQ9IjMwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iNDAwIiBoZWlnaHQ9IjMwMCIgZmlsbD0iIzMzMzMzMyIvPjx0ZXh0IHg9IjUwJSIgeT0iNTAlIiBmb250LWZhbWlseT0iQXJpYWwiIGZvbnQtc2l6ZT0iMTgiIGZpbGw9IiM4ODg4ODgiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGR5PSIuM2VtIj5WaWRlbyBQcmV2aWV3PC90ZXh0Pjwvc3ZnPg==';
+                                }
+                              } else {
+                                // If generated thumbnail also fails, show placeholder
+                                img.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAwIiBoZWlnaHQ9IjMwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iNDAwIiBoZWlnaHQ9IjMwMCIgZmlsbD0iIzMzMzMzMyIvPjx0ZXh0IHg9IjUwJSIgeT0iNTAlIiBmb250LWZhbWlseT0iQXJpYWwiIGZvbnQtc2l6ZT0iMTgiIGZpbGw9IiM4ODg4ODgiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGR5PSIuM2VtIj5WaWRlbyBQcmV2aWV3PC90ZXh0Pjwvc3ZnPg==';
+                              }
+                            }}
                           />
                           <div className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity">
                             <span className="text-xs font-semibold text-white">{preset.name}</span>
@@ -1956,20 +2325,36 @@ function AudiencePageContent() {
                     <label className="text-sm text-gray-400 mb-2 block">Choose Video</label>
                     <div className="grid grid-cols-2 gap-2">
                       {virtualBgPresets.videos.map((preset) => (
-                        <button
-                          key={preset.id}
-                          onClick={() => setSelectedPreset(preset.id)}
-                          className={`relative aspect-video rounded-lg overflow-hidden border-2 transition-all ${
-                            selectedPreset === preset.id
-                              ? 'border-agora-blue ring-2 ring-agora-blue'
-                              : 'border-gray-700 hover:border-gray-600'
-                          }`}
-                        >
-                          <img
-                            src={preset.thumbnail}
-                            alt={preset.name}
-                            className="w-full h-full object-cover"
-                          />
+                          <button
+                            key={preset.id}
+                            onClick={() => setSelectedPreset(preset.id)}
+                            className={`relative aspect-video rounded-lg overflow-hidden border-2 transition-all ${
+                              selectedPreset === preset.id
+                                ? 'border-agora-blue ring-2 ring-agora-blue'
+                                : 'border-gray-700 hover:border-gray-600'
+                            }`}
+                          >
+                            <img
+                              src={videoThumbnails[preset.id] || preset.thumbnail}
+                              alt={preset.name}
+                              className="w-full h-full object-cover"
+                              onError={async (e) => {
+                                // If thumbnail fails to load, try to generate one from the video
+                                const img = e.target as HTMLImageElement;
+                                if (!videoThumbnails[preset.id]) {
+                                  const generatedThumbnail = await generateVideoThumbnail(preset.url, preset.id);
+                                  if (generatedThumbnail) {
+                                    img.src = generatedThumbnail;
+                                  } else {
+                                    // Fallback to a placeholder
+                                    img.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAwIiBoZWlnaHQ9IjMwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iNDAwIiBoZWlnaHQ9IjMwMCIgZmlsbD0iIzMzMzMzMyIvPjx0ZXh0IHg9IjUwJSIgeT0iNTAlIiBmb250LWZhbWlseT0iQXJpYWwiIGZvbnQtc2l6ZT0iMTgiIGZpbGw9IiM4ODg4ODgiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGR5PSIuM2VtIj5WaWRlbyBQcmV2aWV3PC90ZXh0Pjwvc3ZnPg==';
+                                  }
+                                } else {
+                                  // If generated thumbnail also fails, show placeholder
+                                  img.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAwIiBoZWlnaHQ9IjMwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iNDAwIiBoZWlnaHQ9IjMwMCIgZmlsbD0iIzMzMzMzMyIvPjx0ZXh0IHg9IjUwJSIgeT0iNTAlIiBmb250LWZhbWlseT0iQXJpYWwiIGZvbnQtc2l6ZT0iMTgiIGZpbGw9IiM4ODg4ODgiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGR5PSIuM2VtIj5WaWRlbyBQcmV2aWV3PC90ZXh0Pjwvc3ZnPg==';
+                                }
+                              }}
+                            />
                           <div className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity">
                             <div className="text-center">
                               <Play size={24} className="mx-auto mb-1 text-white" />
@@ -1990,7 +2375,16 @@ function AudiencePageContent() {
                 {/* Apply Button */}
                 <div className="flex space-x-3 pt-4">
                   <button
-                    onClick={() => setShowVirtualBgModal(false)}
+                    onClick={() => {
+                      // Restore original state when canceling
+                      if (originalVirtualBgStateRef.current) {
+                        setVirtualBgType(originalVirtualBgStateRef.current.type);
+                        setVirtualBgColor(originalVirtualBgStateRef.current.color);
+                        setVirtualBgBlur(originalVirtualBgStateRef.current.blur);
+                        setSelectedPreset(originalVirtualBgStateRef.current.preset);
+                      }
+                      setShowVirtualBgModal(false);
+                    }}
                     className="flex-1 bg-gray-700 hover:bg-gray-600 px-4 py-2 rounded-lg font-bold"
                   >
                     Cancel
