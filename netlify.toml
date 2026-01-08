@@ -13,5 +13,12 @@
 [[plugins]]
   package = "@netlify/plugin-nextjs"
 
+# Configure which environment variables are passed to functions
+# This helps avoid the 4KB Lambda environment variable limit
+[functions]
+  # Only pass essential variables to functions
+  # Next.js API routes can access all env vars, but Netlify functions have limits
+  included_files = []
+
 # Next.js handles all routing - no need for redirects
 # The plugin automatically handles Next.js routing

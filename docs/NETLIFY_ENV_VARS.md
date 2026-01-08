@@ -87,6 +87,30 @@ If environment variables aren't working on Netlify:
 
 5. **Check build logs**: Environment variables are available during build time. Check the build logs to see if variables are being read correctly.
 
+## Important: 4KB Environment Variable Limit
+
+**Netlify Lambda functions have a 4KB limit for all environment variables combined.** If you exceed this limit, deployments will fail with:
+```
+Your environment variables exceed the 4KB limit imposed by AWS Lambda
+```
+
+### Solutions:
+
+1. **Remove unused variables**: Delete environment variables in Netlify that you're not actually using (e.g., if you're not using recording features, remove all `RECORDING_*` variables)
+
+2. **Reduce variable sizes**: If you have very long values (like multi-line `AI_AGENT_SYSTEM_MESSAGE`), consider shortening them or using a different storage method
+
+3. **Use Next.js API routes**: Next.js API routes (in `app/api/`) can access all environment variables without the 4KB limit, but Netlify functions (in `netlify/functions/`) are subject to this limit
+
+4. **Check your variables**: Go to Netlify dashboard → Site settings → Environment variables and review which ones you actually need
+
+### Variables You Can Remove (if not using):
+
+- All `RECORDING_*` variables` (if not using cloud recording)
+- All `STT_*` variables (if not using speech-to-text)
+- `REACT_APP_*` variables (if fully migrated to Next.js)
+- `TTS_VENDOR`, `ASR_VENDOR` (if using defaults)
+
 ## Common Issues
 
 ### Variables not available at runtime
