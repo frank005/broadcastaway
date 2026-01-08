@@ -1,9 +1,21 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 
 // Ensure we're using Node.js runtime
 export const runtime = 'nodejs';
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  // Only allow access in development or with a secret key
+  const authHeader = request.headers.get('authorization');
+  const secretKey = process.env.ENV_CHECK_SECRET_KEY;
+  const isDevelopment = process.env.NODE_ENV === 'development';
+  
+  // Require secret key in production (unless in development)
+  if (!isDevelopment && (!secretKey || authHeader !== `Bearer ${secretKey}`)) {
+    return NextResponse.json(
+      { error: 'Unauthorized' },
+      { status: 401 }
+    );
+  }
   // Calculate total size of all environment variables (for Netlify 4KB limit check)
   const allEnvVars: Array<{ key: string; valueSize: number; keySize: number; totalSize: number; valuePreview: string }> = [];
   let totalSize = 0;
