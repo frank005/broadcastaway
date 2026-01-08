@@ -147,8 +147,25 @@ export async function POST(request: NextRequest) {
       // Build system messages array
       const systemMessages = [];
       
-      // Build the main system prompt - use env var, then prompt param, then default
-      const systemPrompt = process.env.AI_AGENT_SYSTEM_MESSAGE || prompt || 'You are a helpful live shopping assistant. Help the host sell products.';
+      // Load system message from file if env var is not set (to avoid 4KB Lambda limit)
+      let systemPrompt = process.env.AI_AGENT_SYSTEM_MESSAGE;
+      
+      // If not in env var, try to load from file
+      if (!systemPrompt) {
+        try {
+          const fs = require('fs');
+          const path = require('path');
+          const systemMessagePath = path.join(process.cwd(), 'app', 'api', 'ai-agent-system-message.txt');
+          if (fs.existsSync(systemMessagePath)) {
+            systemPrompt = fs.readFileSync(systemMessagePath, 'utf-8').trim();
+          }
+        } catch (error) {
+          console.warn('⚠️ [AI AGENT API] Could not load system message from file:', error);
+        }
+      }
+      
+      // Fallback to prompt param or default
+      systemPrompt = systemPrompt || prompt || 'You are a helpful live shopping assistant. Help the host sell products.';
       
       // Add main system prompt
       systemMessages.push({
