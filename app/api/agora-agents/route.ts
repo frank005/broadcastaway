@@ -147,25 +147,32 @@ export async function POST(request: NextRequest) {
       // Build system messages array
       const systemMessages = [];
       
-      // Load system message from file if env var is not set (to avoid 4KB Lambda limit)
-      let systemPrompt = process.env.AI_AGENT_SYSTEM_MESSAGE;
+      // Always load system message from file (synced via GitHub)
+      // This avoids the 4KB Lambda environment variable limit
+      // The file can be updated and pushed to GitHub to change the system message
+      let systemPrompt: string | null = null;
       
-      // If not in env var, try to load from file
-      if (!systemPrompt) {
-        try {
-          const fs = require('fs');
-          const path = require('path');
-          const systemMessagePath = path.join(process.cwd(), 'app', 'api', 'ai-agent-system-message.txt');
-          if (fs.existsSync(systemMessagePath)) {
-            systemPrompt = fs.readFileSync(systemMessagePath, 'utf-8').trim();
-          }
-        } catch (error) {
-          console.warn('⚠️ [AI AGENT API] Could not load system message from file:', error);
+      try {
+        const fs = require('fs');
+        const path = require('path');
+        const systemMessagePath = path.join(process.cwd(), 'app', 'api', 'ai-agent-system-message.txt');
+        if (fs.existsSync(systemMessagePath)) {
+          systemPrompt = fs.readFileSync(systemMessagePath, 'utf-8').trim();
+          console.log('✅ [AI AGENT API] Loaded system message from file (synced via GitHub)');
+        } else {
+          console.warn('⚠️ [AI AGENT API] System message file not found at:', systemMessagePath);
         }
+      } catch (error) {
+        console.error('❌ [AI AGENT API] Could not load system message from file:', error);
       }
       
-      // Fallback to prompt param or default
-      systemPrompt = systemPrompt || prompt || 'You are a helpful live shopping assistant. Help the host sell products.';
+      // Fallback priority: file → prompt param → env var → default
+      // File is always used if it exists (synced via GitHub)
+      // Note: env var is last priority to avoid 4KB limit issues
+      if (!systemPrompt) {
+        systemPrompt = prompt || process.env.AI_AGENT_SYSTEM_MESSAGE || 'You are a helpful live shopping assistant. Help the host sell products.';
+        console.log('⚠️ [AI AGENT API] Using fallback system message (file not available)');
+      }
       
       // Add main system prompt
       systemMessages.push({
