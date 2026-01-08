@@ -53,6 +53,31 @@ export async function POST(request: NextRequest) {
       const openaiKey = process.env.OPENAI_API_KEY;
       const baseUrl = process.env.AGORA_BASE_URL || 'https://api.agora.io';
 
+      // Log all environment variables for debugging (masked for security)
+      console.log('🔍 [AI AGENT API] Environment Variables Check:');
+      console.log('🔍 [AI AGENT API] NEXT_PUBLIC_AGORA_APP_ID:', appId ? `${appId.substring(0, 8)}... (length: ${appId.length})` : 'MISSING');
+      console.log('🔍 [AI AGENT API] AGORA_APP_CERTIFICATE:', appCertificate ? `${appCertificate.substring(0, 8)}... (length: ${appCertificate.length})` : 'MISSING');
+      console.log('🔍 [AI AGENT API] AGORA_CUSTOMER_ID:', process.env.AGORA_CUSTOMER_ID ? `${process.env.AGORA_CUSTOMER_ID.substring(0, 8)}...` : 'MISSING');
+      console.log('🔍 [AI AGENT API] AGORA_REST_API_KEY:', process.env.AGORA_REST_API_KEY ? `${process.env.AGORA_REST_API_KEY.substring(0, 8)}...` : 'MISSING');
+      console.log('🔍 [AI AGENT API] customerId (resolved):', customerId ? `${customerId.substring(0, 8)}...` : 'MISSING');
+      console.log('🔍 [AI AGENT API] AGORA_CUSTOMER_SECRET:', process.env.AGORA_CUSTOMER_SECRET ? 'SET' : 'MISSING');
+      console.log('🔍 [AI AGENT API] AGORA_REST_API_SECRET:', process.env.AGORA_REST_API_SECRET ? 'SET' : 'MISSING');
+      console.log('🔍 [AI AGENT API] customerSecret (resolved):', customerSecret ? 'SET' : 'MISSING');
+      console.log('🔍 [AI AGENT API] OPENAI_API_KEY:', openaiKey ? 'SET' : 'MISSING');
+      console.log('🔍 [AI AGENT API] AGORA_BASE_URL:', baseUrl);
+      console.log('🔍 [AI AGENT API] AI_AGENT_SYSTEM_MESSAGE:', process.env.AI_AGENT_SYSTEM_MESSAGE ? `SET (length: ${process.env.AI_AGENT_SYSTEM_MESSAGE.length})` : 'MISSING');
+      console.log('🔍 [AI AGENT API] AI_AGENT_GREETING_MESSAGE:', process.env.AI_AGENT_GREETING_MESSAGE ? `SET (length: ${process.env.AI_AGENT_GREETING_MESSAGE.length})` : 'MISSING');
+      console.log('🔍 [AI AGENT API] AI_AGENT_FAILURE_MESSAGE:', process.env.AI_AGENT_FAILURE_MESSAGE ? `SET (length: ${process.env.AI_AGENT_FAILURE_MESSAGE.length})` : 'MISSING');
+      console.log('🔍 [AI AGENT API] AI_AGENT_MAX_HISTORY:', process.env.AI_AGENT_MAX_HISTORY || 'NOT SET (using default: 10)');
+      console.log('🔍 [AI AGENT API] OPENAI_MODEL:', process.env.OPENAI_MODEL || 'NOT SET (using default: gpt-4o-mini)');
+      console.log('🔍 [AI AGENT API] OPENAI_API_URL:', process.env.OPENAI_API_URL || 'NOT SET (using default)');
+      console.log('🔍 [AI AGENT API] MICROSOFT_TTS_API_KEY:', process.env.MICROSOFT_TTS_API_KEY ? 'SET' : 'MISSING');
+      console.log('🔍 [AI AGENT API] MICROSOFT_TTS_REGION:', process.env.MICROSOFT_TTS_REGION || 'NOT SET (using default: eastus)');
+      console.log('🔍 [AI AGENT API] MICROSOFT_TTS_VOICE:', process.env.MICROSOFT_TTS_VOICE || 'NOT SET (using default)');
+      console.log('🔍 [AI AGENT API] NODE_ENV:', process.env.NODE_ENV);
+      console.log('🔍 [AI AGENT API] All AI_AGENT_* vars:', Object.keys(process.env).filter(k => k.startsWith('AI_AGENT_')));
+      console.log('🔍 [AI AGENT API] All MICROSOFT_TTS_* vars:', Object.keys(process.env).filter(k => k.startsWith('MICROSOFT_TTS_')));
+
       if (!appId || !customerId || !customerSecret) {
         console.error('❌ [AI AGENT API] Missing Agora configuration');
         return NextResponse.json(
