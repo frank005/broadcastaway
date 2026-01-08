@@ -74,6 +74,12 @@ function AudiencePageContent() {
   const promotionMessageRef = useRef(false); // Prevent duplicate promotion messages
   const [isRecording, setIsRecording] = useState(false); // Track recording state from host
   
+  // Chat scroll tracking
+  const chatContainerRef = useRef<HTMLDivElement>(null);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const isUserScrolledUpRef = useRef(false);
+  const lastMessageCountRef = useRef(0);
+  
   // Debug: Log when isRecording changes
   useEffect(() => {
     console.log('📹 [AUDIENCE] isRecording state changed:', isRecording);
@@ -82,6 +88,67 @@ function AudiencePageContent() {
   // Check PIP support on mount (client-side only)
   useEffect(() => {
     setPipSupported(typeof document !== 'undefined' && !!document.pictureInPictureEnabled);
+  }, []);
+
+  // Helper function to check if user is at bottom
+  const isAtBottom = (container: HTMLDivElement, threshold: number = 50) => {
+    const scrollTop = container.scrollTop;
+    const scrollHeight = container.scrollHeight;
+    const clientHeight = container.clientHeight;
+    const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
+    return distanceFromBottom <= threshold;
+  };
+
+  // Auto-scroll chat to bottom when new messages arrive (if user hasn't scrolled up)
+  useEffect(() => {
+    if (!chatContainerRef.current) return;
+    
+    const container = chatContainerRef.current;
+    
+    // Check if user is currently at bottom
+    const atBottom = isAtBottom(container);
+    
+    // Only auto-scroll if user hasn't manually scrolled up OR if they're at the bottom
+    if (!isUserScrolledUpRef.current || atBottom) {
+      // Use requestAnimationFrame for smooth scrolling
+      requestAnimationFrame(() => {
+        if (chatContainerRef.current) {
+          chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
+          isUserScrolledUpRef.current = false;
+          setUnreadCount(0);
+        }
+      });
+    } else {
+      // User has scrolled up, increment unread count
+      const newMessages = chatMessages.length - lastMessageCountRef.current;
+      if (newMessages > 0) {
+        setUnreadCount(prev => prev + newMessages);
+      }
+    }
+    
+    lastMessageCountRef.current = chatMessages.length;
+  }, [chatMessages]);
+
+  // Handle scroll events to detect manual scrolling
+  useEffect(() => {
+    const container = chatContainerRef.current;
+    if (!container) return;
+
+    const handleScroll = () => {
+      const atBottom = isAtBottom(container);
+      
+      if (atBottom) {
+        // User scrolled back to bottom
+        isUserScrolledUpRef.current = false;
+        setUnreadCount(0);
+      } else {
+        // User scrolled up
+        isUserScrolledUpRef.current = true;
+      }
+    };
+
+    container.addEventListener('scroll', handleScroll, { passive: true });
+    return () => container.removeEventListener('scroll', handleScroll);
   }, []);
   
   // STT State (for audience)
@@ -1250,6 +1317,14 @@ function AudiencePageContent() {
     await agoraService.sendChatMessage(newMessage);
     setChatMessages(prev => [...prev, { senderId: 'You', content: newMessage, timestamp: new Date() }]);
     setNewMessage('');
+    // Always scroll to bottom when user sends a message
+    setTimeout(() => {
+      if (chatContainerRef.current) {
+        chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
+        isUserScrolledUpRef.current = false;
+        setUnreadCount(0);
+      }
+    }, 0);
   };
 
   const startStatsCollection = () => {
@@ -2028,14 +2103,34 @@ function AudiencePageContent() {
         </div>
 
         {/* Sidebar */}
-        <div className="w-full lg:w-80 xl:w-96 bg-gray-900 border-t lg:border-t-0 lg:border-l border-gray-800 flex flex-col shadow-2xl max-h-[50vh] lg:max-h-none">
+        <div className="w-full lg:w-80 xl:w-96 bg-gray-900 border-t lg:border-t-0 lg:border-l border-gray-800 flex flex-col shadow-2xl max-h-[50vh] lg:max-h-none relative">
           <div className="flex border-b border-gray-800">
             <button className="flex-1 py-5 text-sm font-bold border-b-2 border-agora-blue text-agora-blue uppercase tracking-widest">
               Live Chat
             </button>
           </div>
 
-          <div className="flex-1 overflow-y-auto p-3 sm:p-4 lg:p-6 space-y-2 sm:space-y-4">
+          {/* Unread message bubble - positioned relative to sidebar, above input area */}
+          {unreadCount > 0 && (
+            <button
+              onClick={() => {
+                if (chatContainerRef.current) {
+                  chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
+                  setUnreadCount(0);
+                  isUserScrolledUpRef.current = false;
+                }
+              }}
+              className="absolute bottom-24 left-1/2 transform -translate-x-1/2 z-20 bg-agora-blue hover:bg-blue-600 text-white px-4 py-2 rounded-full shadow-lg flex items-center gap-2 text-sm font-medium transition-all animate-bounce cursor-pointer"
+            >
+              <MessageSquare size={16} />
+              {unreadCount} new message{unreadCount !== 1 ? 's' : ''}
+            </button>
+          )}
+
+          <div 
+            ref={chatContainerRef}
+            className="flex-1 overflow-y-auto p-3 sm:p-4 lg:p-6 space-y-2 sm:space-y-4"
+          >
             {/* Participants List - Always visible at top of chat with scrollable max height */}
             <div className="mb-4 pb-4 border-b border-gray-800">
               <h3 className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-3">Participants ({participants.length + 1})</h3>

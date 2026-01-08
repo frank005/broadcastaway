@@ -5,7 +5,7 @@ import { useParams, useSearchParams, useRouter } from 'next/navigation';
 import { 
   Mic, MicOff, Video, VideoOff, ScreenShare, PhoneOff, 
   Users, Settings, Send, Rocket, Download, Server, Bot, Play, Pause,
-  Check, X, RefreshCw, Upload, Clock, Copy, HelpCircle, User, BarChart3, Circle, MoreVertical, Image, Palette, Sparkles, Languages
+  Check, X, RefreshCw, Upload, Clock, Copy, HelpCircle, User, BarChart3, Circle, MoreVertical, Image, Palette, Sparkles, Languages, MessageSquare
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import agoraService from '../../../src/services/agoraService';
@@ -124,6 +124,112 @@ function BroadcastPageContent() {
   const hasAddedJoinMessageRef = useRef(false); // Prevent duplicate join messages
   const promotionMessagesRef = useRef<Set<string>>(new Set()); // Track promotion messages to prevent duplicates
   const volumeUpdateTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  
+  // Chat scroll tracking
+  const chatContainerRef = useRef<HTMLDivElement>(null);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const isUserScrolledUpRef = useRef(false);
+  const lastMessageCountRef = useRef(0);
+
+  // Helper function to check if user is at bottom
+  const isAtBottom = (container: HTMLDivElement, threshold: number = 50) => {
+    const scrollTop = container.scrollTop;
+    const scrollHeight = container.scrollHeight;
+    const clientHeight = container.clientHeight;
+    const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
+    return distanceFromBottom <= threshold;
+  };
+
+  // Auto-scroll chat to bottom when new messages arrive (if user hasn't scrolled up)
+  useEffect(() => {
+    // Wait for next tick to ensure DOM is ready when tab changes
+    const timeoutId = setTimeout(() => {
+      if (!chatContainerRef.current || activeTab !== 'chat') return;
+      
+      const container = chatContainerRef.current;
+      
+      // Check if user is currently at bottom
+      const atBottom = isAtBottom(container);
+      
+      // Only auto-scroll if user hasn't manually scrolled up OR if they're at the bottom
+      if (!isUserScrolledUpRef.current || atBottom) {
+        // Use requestAnimationFrame for smooth scrolling
+        requestAnimationFrame(() => {
+          if (chatContainerRef.current && activeTab === 'chat') {
+            chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
+            isUserScrolledUpRef.current = false;
+            setUnreadCount(0);
+          }
+        });
+      } else {
+        // User has scrolled up, increment unread count
+        const newMessages = chatMessages.length - lastMessageCountRef.current;
+        if (newMessages > 0) {
+          setUnreadCount(prev => prev + newMessages);
+        }
+      }
+      
+      lastMessageCountRef.current = chatMessages.length;
+    }, 0);
+    
+    return () => clearTimeout(timeoutId);
+  }, [chatMessages, activeTab]);
+
+  // Scroll to bottom when switching to chat tab
+  useEffect(() => {
+    if (activeTab === 'chat') {
+      // Wait for DOM to render
+      const timeoutId = setTimeout(() => {
+        if (chatContainerRef.current) {
+          chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
+          isUserScrolledUpRef.current = false;
+          setUnreadCount(0);
+        }
+      }, 100);
+      
+      return () => clearTimeout(timeoutId);
+    }
+  }, [activeTab]);
+
+  // Handle scroll events to detect manual scrolling
+  useEffect(() => {
+    if (activeTab !== 'chat') return;
+    
+    let scrollHandler: ((e: Event) => void) | null = null;
+    let timeoutId: NodeJS.Timeout;
+    
+    // Wait for DOM to be ready when tab changes
+    timeoutId = setTimeout(() => {
+      const container = chatContainerRef.current;
+      if (!container || activeTab !== 'chat') return;
+
+      scrollHandler = () => {
+        const atBottom = isAtBottom(container);
+        
+        if (atBottom) {
+          // User scrolled back to bottom
+          isUserScrolledUpRef.current = false;
+          setUnreadCount(0);
+        } else {
+          // User scrolled up
+          isUserScrolledUpRef.current = true;
+        }
+      };
+
+      container.addEventListener('scroll', scrollHandler, { passive: true });
+      
+      // Also check initial scroll position
+      scrollHandler();
+    }, 100);
+    
+    return () => {
+      clearTimeout(timeoutId);
+      const container = chatContainerRef.current;
+      if (container && scrollHandler) {
+        container.removeEventListener('scroll', scrollHandler);
+      }
+    };
+  }, [activeTab]);
   
   // Cloud Recording State
   const [showRecordingModal, setShowRecordingModal] = useState(false);
@@ -747,6 +853,16 @@ function BroadcastPageContent() {
     await agoraService.sendChatMessage(newMessage);
     setChatMessages(prev => [...prev, { senderId: 'You', content: newMessage, timestamp: new Date() }]);
     setNewMessage('');
+    // Always scroll to bottom when user sends a message
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        if (chatContainerRef.current && activeTab === 'chat') {
+          chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
+          isUserScrolledUpRef.current = false;
+          setUnreadCount(0);
+        }
+      });
+    });
   };
 
   const startStatsCollection = () => {
@@ -3597,7 +3713,7 @@ function BroadcastPageContent() {
         </div>
 
         {/* Sidebar */}
-        <div className="w-full lg:w-80 xl:w-96 bg-gray-900 border-t lg:border-t-0 lg:border-l border-gray-800 flex flex-col max-h-[50vh] lg:max-h-none">
+        <div className="w-full lg:w-80 xl:w-96 bg-gray-900 border-t lg:border-t-0 lg:border-l border-gray-800 flex flex-col max-h-[50vh] lg:max-h-none relative">
           <div className="flex border-b border-gray-800">
             <button 
               onClick={() => setActiveTab('chat')}
@@ -3619,11 +3735,29 @@ function BroadcastPageContent() {
             </button>
           </div>
 
+          {/* Unread message bubble - positioned relative to sidebar, above input area, only show on chat tab */}
+          {unreadCount > 0 && activeTab === 'chat' && (
+            <button
+              onClick={() => {
+                if (chatContainerRef.current) {
+                  chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
+                  setUnreadCount(0);
+                  isUserScrolledUpRef.current = false;
+                }
+              }}
+              className="absolute bottom-28 left-1/2 transform -translate-x-1/2 z-30 bg-agora-blue hover:bg-blue-600 text-white px-4 py-2 rounded-full shadow-lg flex items-center gap-2 text-sm font-medium transition-all animate-bounce cursor-pointer"
+              style={{ bottom: '80px' }}
+            >
+              <MessageSquare size={16} />
+              {unreadCount} new message{unreadCount !== 1 ? 's' : ''}
+            </button>
+          )}
+
           <div className="flex-1 overflow-y-auto p-3 sm:p-4">
             {activeTab === 'chat' && (
-              <div className="flex-1 flex flex-col">
+              <div className="flex-1 flex flex-col h-full">
                 {/* Participants List - Always visible at top of chat */}
-                <div className="mb-3 sm:mb-4 pb-3 sm:pb-4 border-b border-gray-800">
+                <div className="mb-3 sm:mb-4 pb-3 sm:pb-4 border-b border-gray-800 flex-shrink-0">
                   <h3 className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-3">Participants ({participants.length + 1})</h3>
                   <div className="space-y-2 max-h-32 overflow-y-auto">
                     {/* Host (self) */}
@@ -3652,13 +3786,16 @@ function BroadcastPageContent() {
                   </div>
                 </div>
                 {!rtmLoggedIn && (
-                  <div className="bg-yellow-600/20 border border-yellow-600/50 rounded-lg p-3 m-4">
+                  <div className="bg-yellow-600/20 border border-yellow-600/50 rounded-lg p-3 m-4 flex-shrink-0">
                     <p className="text-yellow-400 text-sm font-medium">
                       ⚠️ Chat is disabled - RTM not logged in. Chat messages will not be sent or received.
                     </p>
                   </div>
                 )}
-                <div className="flex-1 overflow-y-auto space-y-2 sm:space-y-4 p-3 sm:p-4">
+                <div 
+                  ref={chatContainerRef}
+                  className="flex-1 overflow-y-auto space-y-2 sm:space-y-4 p-3 sm:p-4 min-h-0"
+                >
                   {chatMessages.map((msg, i) => (
                     <div key={i} className={`flex flex-col ${msg.senderId === 'You' ? 'items-end' : 'items-start'}`}>
                       {!msg.isSystem && (
