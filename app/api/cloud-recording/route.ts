@@ -31,69 +31,6 @@ export async function POST(request: NextRequest) {
       'Authorization': `Basic ${auth}`
     };
 
-    // Helper function to build file name prefix with date, time, and channel name
-    // Defined outside action blocks so it can be used by both start and stop actions
-    const buildFileNamePrefix = (envPrefix: string | undefined): string[] => {
-      const basePrefix = envPrefix
-        ? envPrefix.split(',').map(p => p.trim()).filter(Boolean)
-        : [];
-      
-      // Get current date and time
-      const now = new Date();
-      const year = now.getFullYear();
-      const month = String(now.getMonth() + 1).padStart(2, '0');
-      const day = String(now.getDate()).padStart(2, '0');
-      // Get time in HHMM format (e.g., 1430 for 2:30 PM)
-      const hours = String(now.getHours()).padStart(2, '0');
-      const minutes = String(now.getMinutes()).padStart(2, '0');
-      const time = hours + minutes; // HHMM format (e.g., "1430")
-      
-      // Clean channel name for file path:
-      // 1. Remove bc_ prefix
-      // 2. Remove random suffix pattern (_1234)
-      // 3. Agora fileNamePrefix only allows alphanumeric characters (NO dashes, NO underscores)
-      // 4. Replace all non-alphanumeric with nothing (remove them)
-      let cleanChannelName = channelName.replace(/^bc_/, '');
-      cleanChannelName = cleanChannelName.replace(/_\d+$/, '');
-      // Remove ALL non-alphanumeric characters (no dashes, no underscores allowed)
-      cleanChannelName = cleanChannelName.replace(/[^a-zA-Z0-9]/g, '');
-      
-      // Ensure cleanChannelName is not empty
-      if (!cleanChannelName) {
-        cleanChannelName = 'recording';
-      }
-      
-      // Clean all prefix elements to ensure they only contain alphanumeric characters
-      // Agora fileNamePrefix validation is strict - only alphanumeric allowed (no dashes, no underscores)
-      const cleanPrefixElements = (elements: string[]): string[] => {
-        return elements
-          .map(p => String(p).replace(/[^a-zA-Z0-9]/g, '')) // Remove all non-alphanumeric
-          .filter(p => p.length > 0); // Remove empty strings
-      };
-      
-      const cleanedBasePrefix = cleanPrefixElements(basePrefix);
-      
-      // Combine: envPrefix, YYYY, MM, DD, cleanChannelName, HHMM (time)
-      // Channel name comes before time so recordings for the same channel are grouped together
-      // Time is included to differentiate multiple recordings in the same day for the same channel
-      // If basePrefix is empty, just use date, channel name, and time
-      const prefix = cleanedBasePrefix.length > 0 
-        ? [...cleanedBasePrefix, String(year), month, day, cleanChannelName, time]
-        : [String(year), month, day, cleanChannelName, time];
-      
-      // Final validation: ensure all elements are alphanumeric only
-      const validatedPrefix = prefix
-        .map(p => String(p).replace(/[^a-zA-Z0-9]/g, ''))
-        .filter(p => p.length > 0);
-      
-      // Agora requires at least one element
-      if (validatedPrefix.length === 0) {
-        validatedPrefix.push('recording');
-      }
-      
-      return validatedPrefix;
-    };
-
     if (action === 'acquire') {
       // Acquire recording resource
       const recordingUid = recordingType === 'composite' 
@@ -160,6 +97,65 @@ export async function POST(request: NextRequest) {
       const token = tokenData.token || '';
 
       let startBody: any;
+
+      // Helper function to build file name prefix with date, time, and channel name
+      const buildFileNamePrefix = (envPrefix: string | undefined): string[] => {
+        const basePrefix = envPrefix
+          ? envPrefix.split(',').map(p => p.trim()).filter(Boolean)
+          : [];
+        
+        // Get current date and time
+        const now = new Date();
+        const year = now.getFullYear();
+        const month = String(now.getMonth() + 1).padStart(2, '0');
+        const day = String(now.getDate()).padStart(2, '0');
+        const hours = String(now.getHours()).padStart(2, '0');
+        const minutes = String(now.getMinutes()).padStart(2, '0');
+        const time = hours + minutes; // HHMM format
+        
+        // Clean channel name for file path:
+        // 1. Remove bc_ prefix
+        // 2. Remove random suffix pattern (_1234)
+        // 3. Agora fileNamePrefix only allows alphanumeric characters (NO dashes, NO underscores)
+        // 4. Replace all non-alphanumeric with nothing (remove them)
+        let cleanChannelName = channelName.replace(/^bc_/, '');
+        cleanChannelName = cleanChannelName.replace(/_\d+$/, '');
+        // Remove ALL non-alphanumeric characters (no dashes, no underscores allowed)
+        cleanChannelName = cleanChannelName.replace(/[^a-zA-Z0-9]/g, '');
+        
+        // Ensure cleanChannelName is not empty
+        if (!cleanChannelName) {
+          cleanChannelName = 'recording';
+        }
+        
+        // Clean all prefix elements to ensure they only contain alphanumeric characters
+        // Agora fileNamePrefix validation is strict - only alphanumeric allowed (no dashes, no underscores)
+        const cleanPrefixElements = (elements: string[]): string[] => {
+          return elements
+            .map(p => String(p).replace(/[^a-zA-Z0-9]/g, '')) // Remove all non-alphanumeric
+            .filter(p => p.length > 0); // Remove empty strings
+        };
+        
+        const cleanedBasePrefix = cleanPrefixElements(basePrefix);
+        
+        // Combine: envPrefix,YYYY,MM,DD,cleanChannelName,HHMM
+        // If basePrefix is empty, just use date, channel name, and time
+        const prefix = cleanedBasePrefix.length > 0 
+          ? [...cleanedBasePrefix, String(year), month, day, cleanChannelName, time]
+          : [String(year), month, day, cleanChannelName, time];
+        
+        // Final validation: ensure all elements are alphanumeric only
+        const validatedPrefix = prefix
+          .map(p => String(p).replace(/[^a-zA-Z0-9]/g, ''))
+          .filter(p => p.length > 0);
+        
+        // Agora requires at least one element
+        if (validatedPrefix.length === 0) {
+          validatedPrefix.push('recording');
+        }
+        
+        return validatedPrefix;
+      };
 
       if (recordingType === 'composite') {
         // Composite recording
@@ -351,12 +347,28 @@ export async function POST(request: NextRequest) {
       }
 
       // Include storage config info in response for URL generation
-      // Rebuild fileNamePrefix for stop response - uses same logic as start (with time)
-      // Note: We use the same buildFileNamePrefix function to ensure consistency
+      // Rebuild fileNamePrefix for stop response
       const buildFileNamePrefixForStop = (envPrefix: string | undefined): string[] => {
-        // Use the same function as start to ensure consistency
-        // The time was already included when the recording started
-        return buildFileNamePrefix(envPrefix);
+        const basePrefix = envPrefix
+          ? envPrefix.split(',').map(p => p.trim()).filter(Boolean)
+          : [];
+        
+        const now = new Date();
+        const year = now.getFullYear();
+        const month = String(now.getMonth() + 1).padStart(2, '0');
+        const day = String(now.getDate()).padStart(2, '0');
+        const hours = String(now.getHours()).padStart(2, '0');
+        const minutes = String(now.getMinutes()).padStart(2, '0');
+        const time = hours + minutes; // HHMM format
+        
+        // Clean channel name for file path (same as in buildFileNamePrefix)
+        // Agora fileNamePrefix only allows alphanumeric characters (NO dashes, NO underscores)
+        let cleanChannelName = channelName.replace(/^bc_/, '');
+        cleanChannelName = cleanChannelName.replace(/_\d+$/, '');
+        // Remove ALL non-alphanumeric characters (no dashes, no underscores allowed)
+        cleanChannelName = cleanChannelName.replace(/[^a-zA-Z0-9]/g, '');
+        
+        return [...basePrefix, String(year), month, day, cleanChannelName, time];
       };
 
       const storageConfig = recordingType === 'composite' ? {
