@@ -196,7 +196,7 @@ function BroadcastPageContent() {
   useEffect(() => {
     if (activeTab !== 'chat') return;
     
-    let scrollHandler: ((e: Event) => void) | null = null;
+    let scrollHandler: ((e?: Event) => void) | null = null;
     let timeoutId: NodeJS.Timeout;
     
     // Wait for DOM to be ready when tab changes
