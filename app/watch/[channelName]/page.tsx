@@ -603,7 +603,11 @@ function AudiencePageContent() {
         });
 
         // Also add to transcript entries (both final and non-final for live updates)
-        const displayName = agoraService.displayNameMap?.get(uid) || agoraService.rtmUserIdToDisplayNameMap?.get(agoraService.userIdMap?.get(uid) || '') || `User ${uid}`;
+        // Check if this is the AI agent (UID 8888) and use "AI Assistant" instead of "User 8888"
+        let displayName = agoraService.displayNameMap?.get(uid) || agoraService.rtmUserIdToDisplayNameMap?.get(agoraService.userIdMap?.get(uid) || '') || `User ${uid}`;
+        if (uid === 8888 || displayName === 'User 8888') {
+          displayName = 'AI Assistant';
+        }
         const finalFlag = isFinal !== undefined ? isFinal : true; // Default to true if not provided
         
         if (text.trim()) {
@@ -713,7 +717,11 @@ function AudiencePageContent() {
         });
 
         // Also add translation to transcript entries
-        const displayName = agoraService.displayNameMap?.get(uid) || agoraService.rtmUserIdToDisplayNameMap?.get(agoraService.userIdMap?.get(uid) || '') || `User ${uid}`;
+        // Check if this is the AI agent (UID 8888) and use "AI Assistant" instead of "User 8888"
+        let displayName = agoraService.displayNameMap?.get(uid) || agoraService.rtmUserIdToDisplayNameMap?.get(agoraService.userIdMap?.get(uid) || '') || `User ${uid}`;
+        if (uid === 8888 || displayName === 'User 8888') {
+          displayName = 'AI Assistant';
+        }
         if (text.trim()) {
           setTranscriptEntries(prev => {
             const translationText = `[${targetLang}]: ${text.trim()}`;

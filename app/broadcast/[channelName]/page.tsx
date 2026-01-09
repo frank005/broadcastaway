@@ -648,7 +648,11 @@ function BroadcastPageContent() {
         });
         
         // Also add to transcript entries (both final and non-final for live updates)
-        const displayName = agoraService.displayNameMap?.get(uid) || agoraService.rtmUserIdToDisplayNameMap?.get(agoraService.userIdMap?.get(uid) || '') || `User ${uid}`;
+        // Check if this is the AI agent (UID 8888) and use "AI Assistant" instead of "User 8888"
+        let displayName = agoraService.displayNameMap?.get(uid) || agoraService.rtmUserIdToDisplayNameMap?.get(agoraService.userIdMap?.get(uid) || '') || `User ${uid}`;
+        if (uid === 8888 || displayName === 'User 8888') {
+          displayName = 'AI Assistant';
+        }
         const finalFlag = isFinal !== undefined ? isFinal : true; // Default to true if not provided
         
         if (text.trim()) {
@@ -735,7 +739,11 @@ function BroadcastPageContent() {
         });
         
         // Also add translation to transcript entries
-        const displayName = agoraService.displayNameMap?.get(uid) || agoraService.rtmUserIdToDisplayNameMap?.get(agoraService.userIdMap?.get(uid) || '') || `User ${uid}`;
+        // Check if this is the AI agent (UID 8888) and use "AI Assistant" instead of "User 8888"
+        let displayName = agoraService.displayNameMap?.get(uid) || agoraService.rtmUserIdToDisplayNameMap?.get(agoraService.userIdMap?.get(uid) || '') || `User ${uid}`;
+        if (uid === 8888 || displayName === 'User 8888') {
+          displayName = 'AI Assistant';
+        }
         if (text.trim()) {
           setTranscriptEntries(prev => {
             // Add translations as separate entries with simpler format: "[Language]: text"
@@ -3311,12 +3319,12 @@ function BroadcastPageContent() {
 
       {/* OBS Control Bar - Separate section below header */}
       {obsBarOpen && (
-        <div className="px-6 py-0.5 bg-gray-900 border-b border-gray-800 flex-shrink-0">
+        <div className="px-6 py-2 bg-gray-900 border-b border-gray-800 flex-shrink-0">
           <div className="flex items-center gap-2 flex-wrap">
             {/* OBS Setup Instructions Button - Always visible */}
             <button
               onClick={() => setShowOBSSetupInstructions(true)}
-              className="flex items-center space-x-1 bg-gray-700 hover:bg-gray-600 px-1.5 py-0.5 rounded text-[10px]"
+              className="flex items-center space-x-1 bg-gray-700 hover:bg-gray-600 px-2 py-1 rounded text-xs"
               title="OBS WebSocket Setup Instructions"
             >
             <HelpCircle size={14} />
@@ -3326,13 +3334,13 @@ function BroadcastPageContent() {
           {/* OBS Preview */}
           <div 
             id="obs-preview-bar" 
-            className="w-16 h-8 bg-black rounded flex flex-col items-center justify-center text-gray-400 text-[10px] p-0.5 cursor-pointer hover:border-agora-blue border-2 border-transparent"
+            className="w-20 h-12 bg-black rounded flex flex-col items-center justify-center text-gray-400 text-xs p-1 cursor-pointer hover:border-agora-blue border-2 border-transparent"
             title="OBS Preview"
             onClick={toggleOBSPreviewPIP}
           >
-            <div className="text-[9px]">OBS</div>
+            <div className="text-[10px]">OBS</div>
           </div>
-          <div id="obs-preview-status-bar" className="text-[10px] text-gray-400 w-20"></div>
+          <div id="obs-preview-status-bar" className="text-xs text-gray-400 w-24"></div>
           
           {/* Port Input */}
           <input 
@@ -3340,7 +3348,7 @@ function BroadcastPageContent() {
             placeholder="Port (4455)" 
             value={obsPort}
             onChange={(e) => setObsPort(e.target.value)}
-            className="w-[70px] px-1.5 py-0.5 text-[10px] h-7 bg-gray-700 border border-gray-600 rounded"
+            className="w-[80px] px-2 py-1 text-xs h-10 bg-gray-700 border border-gray-600 rounded"
             title="OBS WebSocket port"
           />
           
@@ -3350,7 +3358,7 @@ function BroadcastPageContent() {
             placeholder="OBS Password" 
             value={obsPassword}
             onChange={(e) => setObsPassword(e.target.value)}
-            className="w-[100px] px-1.5 py-0.5 text-[10px] h-7 bg-gray-700 border border-gray-600 rounded"
+            className="w-[120px] px-2 py-1 text-xs h-10 bg-gray-700 border border-gray-600 rounded"
             title="OBS WebSocket password"
           />
           
@@ -3358,20 +3366,20 @@ function BroadcastPageContent() {
           {!obsConnected ? (
             <button 
               onClick={connectOBS}
-              className="w-9 h-7 flex items-center justify-center bg-green-600 hover:bg-green-700 rounded transition-colors"
+              className="w-12 h-10 flex items-center justify-center bg-green-600 hover:bg-green-700 rounded transition-colors"
               title="Connect to OBS"
             >
-              <Check size={14} />
+              <Check size={20} />
             </button>
           ) : (
             <>
-              <div className="text-[10px] text-green-400 min-w-[70px]">✓ Connected</div>
+              <div className="text-xs text-green-400 min-w-[80px]">✓ Connected</div>
               <button 
                 onClick={disconnectOBS}
-                className="w-9 h-7 flex items-center justify-center bg-red-600 hover:bg-red-700 rounded transition-colors"
+                className="w-12 h-10 flex items-center justify-center bg-red-600 hover:bg-red-700 rounded transition-colors"
                 title="Disconnect from OBS"
               >
-                <X size={14} />
+                <X size={20} />
               </button>
             </>
           )}
@@ -3381,32 +3389,32 @@ function BroadcastPageContent() {
             <>
               <button 
                 onClick={startOBSStream}
-                className="w-9 h-7 flex items-center justify-center bg-green-600 hover:bg-green-700 rounded transition-colors"
+                className="w-12 h-10 flex items-center justify-center bg-green-600 hover:bg-green-700 rounded transition-colors"
                 title="Start OBS Stream"
               >
-                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle></svg>
+                <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle></svg>
               </button>
               <button 
                 onClick={stopOBSStream}
-                className="w-9 h-7 flex items-center justify-center bg-red-600 hover:bg-red-700 rounded transition-colors"
+                className="w-12 h-10 flex items-center justify-center bg-red-600 hover:bg-red-700 rounded transition-colors"
                 title="Stop OBS Stream"
               >
-                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12"></rect></svg>
+                <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12"></rect></svg>
               </button>
               <button 
                 onClick={getOBSStreamStatus}
-                className="w-9 h-7 flex items-center justify-center bg-gray-600 hover:bg-gray-500 rounded transition-colors"
+                className="w-12 h-10 flex items-center justify-center bg-gray-600 hover:bg-gray-500 rounded transition-colors"
                 title="Check Stream Status"
               >
-                <Clock size={14} />
+                <Clock size={20} />
               </button>
-              <div className="text-[10px] text-gray-400 min-w-[80px]">{obsStreamingStatus}</div>
+              <div className="text-xs text-gray-400 min-w-[100px]">{obsStreamingStatus}</div>
               
               {/* Profile Controls */}
               <select 
                 value={showNewProfileInput ? '__create_new__' : obsCurrentProfile}
                 onChange={(e) => handleProfileSelectChange(e.target.value)}
-                className="px-1.5 py-0.5 text-[10px] h-7 bg-gray-700 border border-gray-600 rounded"
+                className="px-2 py-1 text-xs h-10 bg-gray-700 border border-gray-600 rounded"
                 title="Select OBS Profile"
               >
                 <option value="">Profile...</option>
@@ -3422,12 +3430,12 @@ function BroadcastPageContent() {
                     placeholder="Name"
                     value={obsNewProfileName}
                     onChange={(e) => setObsNewProfileName(e.target.value)}
-                    className="px-1.5 py-0.5 text-[10px] h-7 bg-gray-700 border border-gray-600 rounded"
+                    className="px-2 py-1 text-xs h-10 bg-gray-700 border border-gray-600 rounded"
                     onKeyPress={(e) => e.key === 'Enter' && createOBSProfile()}
                   />
                   <button
                     onClick={createOBSProfile}
-                    className="px-1.5 py-0.5 text-[10px] h-7 bg-green-600 hover:bg-green-700 rounded"
+                    className="px-2 py-1 text-xs h-10 bg-green-600 hover:bg-green-700 rounded"
                   >
                     Create
                   </button>
@@ -3435,17 +3443,17 @@ function BroadcastPageContent() {
               )}
               <button 
                 onClick={listOBSProfiles}
-                className="w-9 h-7 flex items-center justify-center bg-gray-600 hover:bg-gray-500 rounded transition-colors"
+                className="w-12 h-10 flex items-center justify-center bg-gray-600 hover:bg-gray-500 rounded transition-colors"
                 title="Refresh Profiles"
               >
-                <RefreshCw size={12} />
+                <RefreshCw size={16} />
               </button>
               <button 
                 onClick={() => updateOBSProfile()}
-                className="w-9 h-7 flex items-center justify-center bg-green-600 hover:bg-green-700 rounded transition-colors"
+                className="w-12 h-10 flex items-center justify-center bg-green-600 hover:bg-green-700 rounded transition-colors"
                 title="Update Profile Settings"
               >
-                <Upload size={12} />
+                <Upload size={16} />
               </button>
               <button
                 onClick={() => setShowOBSSettings(true)}
