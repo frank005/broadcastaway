@@ -81,7 +81,9 @@ class AgoraService {
     this.mediaPullUpdateSequence = 0;
     this.participants = new Set(); // Track RTM participants (string user IDs)
     this.subscribedMetadataUsers = new Set(); // Track which users we've subscribed to metadata for
-    this.onParticipantsUpdate = null; // Callback for participants list updates
+    this.onParticipantsUpdate = null;
+    this.onAutoplayFailed = null; // Callback for autoplay failure (can be set by pages)
+    this.autoplayFailedPrompt = null; // Reference to the autoplay prompt element // Callback for participants list updates
     this.obsWebSocket = null; // OBS WebSocket connection
     this.obsPendingRequests = new Map(); // Pending OBS requests
     this.obsPreviewInterval = null; // OBS preview update interval
@@ -195,6 +197,9 @@ class AgoraService {
 
     this.AgoraRTC = AgoraRTC;
     this.AgoraRTM = AgoraRTM;
+
+    // Set up autoplay failure handler
+    this.setupAutoplayFailureHandler();
 
     AgoraRTC.setParameter("EXPERIMENTS", {"netqSensitivityMode": 1});
     console.log('🎥 [RTC] Creating RTC client (mode: live, codec: vp9)...');
@@ -387,6 +392,156 @@ class AgoraService {
     console.log('✅ [INIT] Agora Service initialized');
   }
 
+  setupAutoplayFailureHandler() {
+    // Set up AgoraRTC.onAutoplayFailed callback
+    if (this.AgoraRTC) {
+      this.AgoraRTC.onAutoplayFailed = () => {
+        console.warn('⚠️ [RTC] Autoplay failed - browser blocked audio/video autoplay');
+        
+        // If a custom callback is set, use it
+        if (this.onAutoplayFailed) {
+          this.onAutoplayFailed();
+          return;
+        }
+        
+        // Otherwise, show a default prompt
+        this.showAutoplayPrompt();
+      };
+      console.log('✅ [RTC] Autoplay failure handler set up');
+    }
+  }
+
+  showAutoplayPrompt() {
+    // Remove existing prompt if any
+    if (this.autoplayFailedPrompt) {
+      this.autoplayFailedPrompt.remove();
+      this.autoplayFailedPrompt = null;
+    }
+
+    // Create a styled prompt element
+    const prompt = document.createElement('div');
+    prompt.id = 'autoplay-failed-prompt';
+    prompt.style.cssText = `
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      padding: 20px 24px;
+      border-radius: 12px;
+      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+      z-index: 10000;
+      max-width: 400px;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+      animation: slideIn 0.3s ease-out;
+    `;
+
+    // Add animation keyframes if not already added
+    if (!document.getElementById('autoplay-prompt-styles')) {
+      const style = document.createElement('style');
+      style.id = 'autoplay-prompt-styles';
+      style.textContent = `
+        @keyframes slideIn {
+          from {
+            transform: translateX(100%);
+            opacity: 0;
+          }
+          to {
+            transform: translateX(0);
+            opacity: 1;
+          }
+        }
+        @keyframes slideOut {
+          from {
+            transform: translateX(0);
+            opacity: 1;
+          }
+          to {
+            transform: translateX(100%);
+            opacity: 0;
+          }
+        }
+      `;
+      document.head.appendChild(style);
+    }
+
+    prompt.innerHTML = `
+      <div style="display: flex; align-items: flex-start; gap: 12px;">
+        <div style="flex: 1;">
+          <div style="font-size: 15px; opacity: 0.95; margin-bottom: 16px; line-height: 1.5; text-align: center;">
+            Send us a message in the chat, would love to hear from you!
+          </div>
+          <button id="autoplay-resume-btn" style="
+            background: white;
+            color: #667eea;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 6px;
+            font-weight: 600;
+            font-size: 14px;
+            cursor: pointer;
+            width: 100%;
+            transition: all 0.2s;
+          " onmouseover="this.style.transform='scale(1.02)'; this.style.boxShadow='0 4px 12px rgba(0,0,0,0.2)'" onmouseout="this.style.transform='scale(1)'; this.style.boxShadow='none'">
+            OK
+          </button>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(prompt);
+    this.autoplayFailedPrompt = prompt;
+
+    // Handle OK button click
+    const okBtn = prompt.querySelector('#autoplay-resume-btn');
+    okBtn.addEventListener('click', () => {
+      // Remove the prompt
+      this.removeAutoplayPrompt();
+    });
+
+    // Auto-remove after 30 seconds if not clicked
+    setTimeout(() => {
+      if (this.autoplayFailedPrompt === prompt) {
+        this.removeAutoplayPrompt();
+      }
+    }, 30000);
+  }
+
+  removeAutoplayPrompt() {
+    if (this.autoplayFailedPrompt) {
+      this.autoplayFailedPrompt.style.animation = 'slideOut 0.3s ease-out';
+      setTimeout(() => {
+        if (this.autoplayFailedPrompt) {
+          this.autoplayFailedPrompt.remove();
+          this.autoplayFailedPrompt = null;
+        }
+      }, 300);
+    }
+  }
+
+  resumeAudioPlayback() {
+    // Try to play all remote audio tracks
+    console.log('🔄 [RTC] Attempting to resume audio playback...');
+    
+    // Play all remote user audio tracks
+    this.remoteUsers.forEach((user, uid) => {
+      if (user.audioTrack) {
+        try {
+          const playPromise = user.audioTrack.play();
+          if (playPromise && typeof playPromise.then === 'function') {
+            playPromise.then(() => {
+              console.log('✅ [RTC] Resumed audio playback for UID:', uid);
+            }).catch((err) => {
+              console.warn('⚠️ [RTC] Failed to resume audio for UID:', uid, err);
+            });
+          }
+        } catch (err) {
+          console.warn('⚠️ [RTC] Error resuming audio for UID:', uid, err);
+        }
+      }
+    });
+  }
+
   setupRTCEvents() {
     this.rtcClient.on('user-published', async (user, mediaType) => {
       console.log('👤 [RTC] User published event:', {
@@ -499,7 +654,69 @@ class AgoraService {
           this.updateAllMediaPushLayouts();
         }
         if (mediaType === 'audio') {
-          if (user.audioTrack) {
+          // For Conversational AI agent (UID 8888), ensure audio plays for all users
+          const AGENT_UID = 8888;
+          if (user.uid === AGENT_UID && user.audioTrack) {
+            // Function to attempt playing the audio track
+            const playAudioTrack = async (track, retryCount = 0) => {
+              try {
+                // Set volume to ensure it's audible
+                if (track.setVolume) {
+                  track.setVolume(100);
+                }
+                
+                // Try to play the audio track
+                const playPromise = track.play();
+                
+                // play() may return a promise or undefined
+                if (playPromise && typeof playPromise.then === 'function') {
+                  await playPromise;
+                  console.log('✅ [RTC] AI agent audio track playing successfully for UID:', user.uid);
+                } else if (playPromise && typeof playPromise.catch === 'function') {
+                  playPromise.catch(async (err) => {
+                    console.warn('⚠️ [RTC] Failed to play AI agent audio track (attempt ' + (retryCount + 1) + '):', err);
+                    // Retry after a short delay if we haven't tried too many times
+                    if (retryCount < 3) {
+                      setTimeout(() => {
+                        playAudioTrack(track, retryCount + 1);
+                      }, 500);
+                    } else {
+                      console.error('❌ [RTC] Failed to play AI agent audio track after retries:', err);
+                    }
+                  });
+                } else {
+                  // No promise returned, might be playing or might need retry
+                  console.log('🔊 [RTC] AI agent audio track play() called for UID:', user.uid);
+                  // Check if it's actually playing after a short delay
+                  setTimeout(() => {
+                    if (track && track.getMediaStreamTrack) {
+                      const mediaTrack = track.getMediaStreamTrack();
+                      if (mediaTrack && mediaTrack.readyState === 'ended') {
+                        console.warn('⚠️ [RTC] AI agent audio track ended, retrying...');
+                        if (retryCount < 3) {
+                          playAudioTrack(track, retryCount + 1);
+                        }
+                      }
+                    }
+                  }, 1000);
+                }
+              } catch (err) {
+                console.error('❌ [RTC] Error calling play() on AI agent audio track:', err);
+                // Retry after a short delay
+                if (retryCount < 3) {
+                  setTimeout(() => {
+                    playAudioTrack(track, retryCount + 1);
+                  }, 500);
+                }
+              }
+            };
+            
+            // Start playing with a small delay to ensure track is ready
+            setTimeout(() => {
+              playAudioTrack(user.audioTrack);
+            }, 100);
+          } else if (user.audioTrack) {
+            // For other users, play audio normally
             try {
               const playPromise = user.audioTrack.play();
               // play() may return a promise or undefined

@@ -10,6 +10,7 @@ import {
 import { toast } from 'react-hot-toast';
 import agoraService from '../../../src/services/agoraService';
 import VideoPlayer from '../../components/VideoPlayer';
+import AIOverlay from '../../components/AIOverlay';
 import { SOURCE_LANGUAGES, TARGET_LANGUAGES } from '../../utils/sttLanguages';
 
 function BroadcastPageContent() {
@@ -452,6 +453,21 @@ function BroadcastPageContent() {
               await agoraService.rtmClient.publish(agoraService.channelName, sttMessage);
             } catch (err: any) {
               console.error('Failed to send STT config to new user:', err);
+            }
+          }
+          
+          // Send AI agent state if AI is active
+          if (isAiMode) {
+            try {
+              const aiMessage = JSON.stringify({
+                type: 'AI_AGENT_STATUS',
+                active: true,
+                agentId: agoraService.currentAgentId
+              });
+              console.log('🤖 [HOST] Sending AI agent status to new user:', userId, aiMessage);
+              await agoraService.rtmClient.publish(agoraService.channelName, aiMessage);
+            } catch (err: any) {
+              console.error('Failed to send AI agent status to new user:', err);
             }
           }
         }
@@ -2505,6 +2521,23 @@ function BroadcastPageContent() {
         toast.loading('Starting AI Agent...', { id: 'ai-agent' });
         await agoraService.startAiAgent('You are a live shopping assistant. Help the host sell products.');
         toast.success('AI Agent is now active!', { id: 'ai-agent' });
+        
+        // Broadcast AI agent status via RTM so audience knows
+        if (agoraService.rtmClient && agoraService.rtmLoggedIn && agoraService.channelName) {
+          try {
+            await agoraService.rtmClient.publish(
+              agoraService.channelName,
+              JSON.stringify({
+                type: 'AI_AGENT_STATUS',
+                active: true,
+                agentId: agoraService.currentAgentId
+              })
+            );
+            console.log('📢 [HOST] AI agent status broadcasted to all users');
+          } catch (err) {
+            console.error('Failed to broadcast AI agent status:', err);
+          }
+        }
       } catch (err) {
         toast.error('Failed to start AI Agent', { id: 'ai-agent' });
         setIsAiMode(false);
@@ -2514,6 +2547,22 @@ function BroadcastPageContent() {
         toast.loading('Stopping AI Agent...', { id: 'ai-agent' });
         await agoraService.stopAiAgent();
         toast.success('AI Agent stopped', { id: 'ai-agent' });
+        
+        // Broadcast AI agent stopped via RTM
+        if (agoraService.rtmClient && agoraService.rtmLoggedIn && agoraService.channelName) {
+          try {
+            await agoraService.rtmClient.publish(
+              agoraService.channelName,
+              JSON.stringify({
+                type: 'AI_AGENT_STATUS',
+                active: false
+              })
+            );
+            console.log('📢 [HOST] AI agent stopped status broadcasted to all users');
+          } catch (err) {
+            console.error('Failed to broadcast AI agent stopped status:', err);
+          }
+        }
       } catch (err) {
         console.error('Error stopping AI Agent:', err);
         toast.error('Failed to stop AI Agent', { id: 'ai-agent' });
@@ -3225,6 +3274,13 @@ function BroadcastPageContent() {
                         bitrate: localStats.bitrate || 0 // Already in Kbps
                       } : undefined;
                     })()}
+                  />
+                  {/* AI Overlay - Shows when AI is present and indicates when it's speaking */}
+                  <AIOverlay 
+                    participants={participants}
+                    remoteUsers={remoteUsers}
+                    agoraService={agoraService}
+                    isAiMode={isAiMode}
                   />
                   {/* STT Language Selection and Transcription Overlay for Host (only show when STT is running) */}
                   {isSTTRunning && sttConfig.languages.length > 0 && (() => {

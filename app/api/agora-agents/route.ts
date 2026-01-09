@@ -201,7 +201,6 @@ export async function POST(request: NextRequest) {
           },
           turn_detection: {
             interrupt_mode: "append",
-            silence_duration_ms: 1300
           },
           parameters: {
             audio_scenario: "chorus",

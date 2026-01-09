@@ -117,3 +117,34 @@ body {
   }
 }
 
+/* AI Overlay Volume Bar Animation - Wave drop effect */
+/* Pattern: Lower -> Middle -> Top -> Middle -> Lower */
+/* Smooth easing for gradual up and down motion */
+@keyframes wave-drop {
+  0% {
+    transform: scaleY(0.3); /* Lower */
+  }
+  20% {
+    transform: scaleY(0.5); /* Rising */
+  }
+  35% {
+    transform: scaleY(0.75); /* Approaching middle */
+  }
+  50% {
+    transform: scaleY(1); /* Top */
+  }
+  65% {
+    transform: scaleY(0.75); /* Dropping from top */
+  }
+  80% {
+    transform: scaleY(0.5); /* Dropping further */
+  }
+  100% {
+    transform: scaleY(0.3); /* Lower */
+  }
+}
+
+.animate-wave-drop {
+  animation: wave-drop 2.5s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  transform-origin: bottom;
+}

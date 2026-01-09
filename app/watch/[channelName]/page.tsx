@@ -9,6 +9,7 @@ import {
 import { toast } from 'react-hot-toast';
 import agoraService from '../../../src/services/agoraService';
 import VideoPlayer from '../../components/VideoPlayer';
+import AIOverlay from '../../components/AIOverlay';
 import { SOURCE_LANGUAGES, TARGET_LANGUAGES } from '../../utils/sttLanguages';
 
 function AudiencePageContent() {
@@ -62,6 +63,7 @@ function AudiencePageContent() {
   const [chatMessages, setChatMessages] = useState<any[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const [participants, setParticipants] = useState<string[]>([]);
+  const [isAiAgentActive, setIsAiAgentActive] = useState(false); // Track AI agent status from RTM
   const [showNameModal, setShowNameModal] = useState(false);
   const [nameInput, setNameInput] = useState('');
   const [showStats, setShowStats] = useState(false);
@@ -272,6 +274,15 @@ function AudiencePageContent() {
                 console.log('📢 [AUDIENCE] Merged translation pairs:', merged);
                 return merged;
               });
+            }
+            return; // Don't add to chat
+          }
+          if (message.type === 'AI_AGENT_STATUS') {
+            // Track AI agent status from host
+            console.log('🤖 [AUDIENCE] Received AI agent status:', message);
+            setIsAiAgentActive(message.active || false);
+            if (message.agentId && agoraService) {
+              agoraService.currentAgentId = message.agentId;
             }
             return; // Don't add to chat
           }
@@ -1698,7 +1709,8 @@ function AudiencePageContent() {
           ) : null}
           <div className={`flex-1 grid gap-2 sm:gap-4 ${remoteUsers.length + (role === 'promoted' ? 1 : 0) > 1 ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-1'}`}>
             {/* Host / Other Promoted Users */}
-            {remoteUsers.map(user => {
+            {remoteUsers.map((user, index) => {
+              const isHost = index === 0; // First user is the host
               const displayName = user.displayName || user.rtmUserId || `User-${user.uid}`;
               const userStats = statsData.get(user.uid);
               const userLangSelection = sttUserLanguageSelections.get(user.uid) || (sttAvailableLanguages.length > 0 ? { transcriptionLang: sttAvailableLanguages[0] } : { transcriptionLang: 'en-US' });
@@ -1729,6 +1741,15 @@ function AudiencePageContent() {
                       bitrate: userStats.bitrate
                     } : undefined}
                   />
+                  {/* AI Overlay - Shows when AI is present and indicates when it's speaking (only on host video) */}
+                  {isHost && (
+                    <AIOverlay 
+                      participants={participants}
+                      remoteUsers={remoteUsers}
+                      agoraService={agoraService}
+                      isAiMode={isAiAgentActive}
+                    />
+                  )}
                   {/* STT Language Selection and Transcription Overlay (only show when STT languages are available) */}
                   {sttAvailableLanguages.length > 0 && (
                     <>
