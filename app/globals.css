@@ -117,34 +117,15 @@ body {
   }
 }
 
-/* AI Overlay Volume Bar Animation - Wave drop effect */
-/* Pattern: Lower -> Middle -> Top -> Middle -> Lower */
-/* Smooth easing for gradual up and down motion */
+/* AI Overlay Volume Bar Animation - VU meter wave effect */
+/* Small bar segments float up and down in a slow wave pattern */
 @keyframes wave-drop {
-  0% {
-    transform: scaleY(0.3); /* Lower */
-  }
-  20% {
-    transform: scaleY(0.5); /* Rising */
-  }
-  35% {
-    transform: scaleY(0.75); /* Approaching middle */
-  }
-  50% {
-    transform: scaleY(1); /* Top */
-  }
-  65% {
-    transform: scaleY(0.75); /* Dropping from top */
-  }
-  80% {
-    transform: scaleY(0.5); /* Dropping further */
-  }
-  100% {
-    transform: scaleY(0.3); /* Lower */
-  }
-}
-
-.animate-wave-drop {
-  animation: wave-drop 2.5s cubic-bezier(0.4, 0, 0.2, 1) infinite;
-  transform-origin: bottom;
+  0% { transform: translateY(0); }
+  15% { transform: translateY(-8px); }
+  30% { transform: translateY(-14px); }
+  45% { transform: translateY(-20px); }
+  60% { transform: translateY(-26px); }
+  75% { transform: translateY(-28px); }
+  90% { transform: translateY(-20px); }
+  100% { transform: translateY(0); }
 }

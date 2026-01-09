@@ -20,6 +20,10 @@ const AIOverlay = ({ participants, remoteUsers, agoraService, isAiMode = false }
   const animationFrameRef = useRef<number | null>(null);
   const aiUserRef = useRef<any>(null);
   const smoothedAudioLevelRef = useRef<number>(0); // For exponential smoothing
+  const vuMeterLevelRef = useRef<number>(0); // For VU meter decay effect
+  const lastUpdateTimeRef = useRef<number>(0); // Throttle state updates
+  const frameCountRef = useRef<number>(0); // Count frames for throttling
+  const barLevelsRef = useRef<number[]>(new Array(10).fill(0)); // Individual bar levels for wave decay
 
   // Detect AI user from participants or remoteUsers
   useEffect(() => {
@@ -404,28 +408,61 @@ const AIOverlay = ({ participants, remoteUsers, agoraService, isAiMode = false }
             sumSquares += normalized * normalized;
           }
           const rms = Math.sqrt(sumSquares / dataArray.length);
-          const volume = rms * 100; // Convert to 0-100 scale
+          
+          // RMS typically ranges from 0 to ~0.3-0.5 for normal speech
+          // Scale it to use full 0-100 range with better sensitivity
+          // Use dynamic scaling: multiply by larger factor to reach higher levels
+          // For loud speech, RMS can be 0.2-0.4, so multiply by 800 to reach 100%
+          const volume = Math.min(100, rms * 800); // Scale RMS to 0-100 range (800 = ~12.5% RMS reaches 100%)
 
           // Update speaking state based on threshold
           const isSpeaking = volume > threshold;
           setIsAISpeaking(isSpeaking);
           
-          // Calculate normalized level (0-100)
+          // Calculate normalized level (0-100) - use full range for VU meter
           let normalizedLevel = 0;
           if (isSpeaking) {
-            // Normalize volume to 0-100, with threshold as minimum
-            // Map from threshold to 100, so threshold = 0% and 100 = 100%
-            normalizedLevel = Math.min(100, Math.max(0, ((volume - threshold) / (100 - threshold)) * 100));
+            // Volume is already 0-100, use it directly
+            normalizedLevel = Math.min(100, Math.max(0, volume));
           }
           
-          // Apply exponential smoothing to prevent rapid flashing
-          // Smoothing factor: 0.2 = fast response, 0.3 = medium, 0.5 = slow
-          // Higher smoothing = slower response but less flashing
-          const smoothingFactor = 0.3;
+          // Apply much more aggressive exponential smoothing for input (slower response = smoother)
+          const smoothingFactor = 0.1; // Much slower smoothing (was 0.3)
           smoothedAudioLevelRef.current = smoothedAudioLevelRef.current * (1 - smoothingFactor) + normalizedLevel * smoothingFactor;
           
-          // Always update state (React will batch updates efficiently)
-          setAudioLevel(smoothedAudioLevelRef.current);
+          // VU meter decay effect with wave pattern - each bar decays at slightly different times
+          // This creates a wave effect when volume drops
+          const currentLevel = smoothedAudioLevelRef.current;
+          
+          // Update each bar level individually with staggered decay for wave effect
+          for (let i = 0; i < 10; i++) {
+            const barLevel = barLevelsRef.current[i] || 0;
+            
+            if (currentLevel > barLevel) {
+              // Rise quickly when volume increases (all bars rise together)
+              const riseFactor = 0.4; // Smooth rise
+              barLevelsRef.current[i] = barLevel * (1 - riseFactor) + currentLevel * riseFactor;
+            } else {
+              // Decay slowly with staggered timing for wave effect
+              // Each bar starts decaying slightly after the previous one
+              const delayFactor = i * 0.02; // Small delay per bar (0.02 = 2% delay per bar)
+              const adjustedCurrentLevel = currentLevel + (barLevel - currentLevel) * delayFactor;
+              const decayFactor = 0.94; // Slow decay for smooth drop
+              barLevelsRef.current[i] = barLevel * decayFactor + adjustedCurrentLevel * (1 - decayFactor);
+            }
+          }
+          
+          // Use average of all bar levels for overall display
+          const averageLevel = barLevelsRef.current.reduce((a: number, b: number) => a + b, 0) / 10;
+          vuMeterLevelRef.current = averageLevel;
+          
+          // Throttle state updates - only update React state every 5 frames (~12fps instead of 60fps)
+          frameCountRef.current++;
+          const now = Date.now();
+          if (frameCountRef.current % 5 === 0 || now - lastUpdateTimeRef.current > 100) {
+            setAudioLevel(vuMeterLevelRef.current);
+            lastUpdateTimeRef.current = now;
+          }
 
           animationFrameRef.current = requestAnimationFrame(checkAudioLevel);
         };
@@ -488,6 +525,48 @@ const AIOverlay = ({ participants, remoteUsers, agoraService, isAiMode = false }
     return null;
   }
 
+  // Keyframes for the VU meter wave animation - very slow left-to-right floating effect
+  // Creates a smooth wave that flows across all bars from left to right
+  const waveKeyframes = `
+    @keyframes vuWave {
+      0% { 
+        transform: translateX(0px) translateY(0px);
+        opacity: 0.7;
+      }
+      12.5% { 
+        transform: translateX(0.5px) translateY(-1px);
+        opacity: 0.85;
+      }
+      25% { 
+        transform: translateX(1px) translateY(-2px);
+        opacity: 1;
+      }
+      37.5% { 
+        transform: translateX(1.5px) translateY(-2.5px);
+        opacity: 1;
+      }
+      50% { 
+        transform: translateX(2px) translateY(-3px);
+        opacity: 1;
+      }
+      62.5% { 
+        transform: translateX(1.5px) translateY(-2.5px);
+        opacity: 1;
+      }
+      75% { 
+        transform: translateX(1px) translateY(-2px);
+        opacity: 1;
+      }
+      87.5% { 
+        transform: translateX(0.5px) translateY(-1px);
+        opacity: 0.85;
+      }
+      100% { 
+        transform: translateX(0px) translateY(0px);
+        opacity: 0.7;
+      }
+    }
+  `;
 
   // Subtle visual feedback - very smooth transitions
   // Use a very small brightness change (only 5-10% variation) to avoid flashing
@@ -497,9 +576,10 @@ const AIOverlay = ({ participants, remoteUsers, agoraService, isAiMode = false }
 
   return (
     <div className="absolute inset-0 z-50 pointer-events-none">
+      <style>{waveKeyframes}</style>
       {/* AI Indicator Overlay - Smoothly transitions from dark to light purple/blue when speaking */}
       <div 
-        className="absolute top-4 left-4 backdrop-blur-md px-3 py-2 rounded-lg shadow-lg border flex items-center gap-2.5 transition-all duration-300 ease-out"
+        className="absolute top-4 left-4 backdrop-blur-md px-2.5 py-1.5 rounded-lg shadow-lg border flex items-center gap-2 transition-all duration-300 ease-out"
         style={{
           background: `linear-gradient(to right, 
             rgba(147, 51, 234, ${bgOpacity * brightnessMultiplier}), 
@@ -514,46 +594,77 @@ const AIOverlay = ({ participants, remoteUsers, agoraService, isAiMode = false }
         <span className="text-white font-semibold text-sm drop-shadow-sm">
           AI
         </span>
-        {/* Always show volume bars - they animate smoothly when speaking */}
-        <div className="flex items-center gap-1.5">
-          <div className="flex items-end gap-0.5 h-6">
-            {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map((i) => {
-              // Base height when not speaking (minimum)
-              const minHeight = 4;
-              // Max height when speaking - bars go up to near the top
-              const maxHeight = 20;
-              // Base height for the bar - animation will scale from this
-              const baseHeight = isAISpeaking ? maxHeight : minHeight;
-              
-              const normalizedLevel = Math.min(100, Math.max(0, audioLevel));
-              const barOpacity = isAISpeaking 
-                ? Math.min(1, 0.5 + (normalizedLevel / 100) * 0.5)
-                : 0.25;
-              const glowIntensity = Math.min(6, normalizedLevel / 15);
-              
-              // Animation delay for wave effect (each bar starts at different time)
-              // Creates a wave that moves from left to right gradually
-              // Pattern: Lower -> Middle -> Top -> Middle -> Lower
-              // Increased delay for smoother, more visible wave progression
-              const animationDelay = i * 0.15; // Staggered delays for 10 bars (0s, 0.15s, 0.3s, ...)
-              
-              return (
+        {/* VU meter style - bars that fill based on volume with floating wave effect */}
+        <div className="flex items-end gap-1 h-6">
+          {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map((i) => {
+            // Use individual bar level for wave decay effect, fallback to average for display
+            const barLevel = (barLevelsRef.current && barLevelsRef.current[i]) || audioLevel;
+            const normalizedLevel = Math.min(100, Math.max(0, barLevel));
+            
+            // Calculate bar height based on audio level - fill to 100% of max height
+            const minHeight = 2;
+            const maxHeight = 24;
+            // Direct mapping - no curve, bars fill to 100% based on volume
+            const barHeight = isAISpeaking 
+              ? minHeight + (normalizedLevel / 100) * (maxHeight - minHeight)
+              : minHeight;
+            
+            // Bar opacity based on volume
+            const barOpacity = isAISpeaking
+              ? Math.min(1, 0.6 + (normalizedLevel / 100) * 0.4)
+              : 0.2;
+            
+            const glowIntensity = Math.min(5, normalizedLevel / 15);
+            
+            // Wave animation - 15 seconds total, staggered delays for smooth left-to-right flow
+            // Each bar starts 1.5 seconds after the previous one, creating a visible wave that flows across
+            // With 10 bars and 1.5s delay, the wave takes 13.5s to flow across all bars
+            const animationDelay = i * 1.5;
+
+            return (
+              <div
+                key={i}
+                className="relative flex items-end"
+                style={{ width: '4px', height: '24px' }}
+              >
+                {/* Background bar (always visible, dim) */}
                 <div
-                  key={i}
-                  className={`w-1.5 rounded-full bg-white ${isAISpeaking ? 'animate-wave-drop' : ''}`}
+                  className="absolute bottom-0 left-0 w-full rounded-full bg-white/15"
                   style={{
-                    height: `${baseHeight}px`,
-                    opacity: barOpacity,
-                    boxShadow: isAISpeaking && normalizedLevel > 20 
-                      ? `0 0 ${glowIntensity}px rgba(255, 255, 255, 0.6), 0 0 ${glowIntensity * 1.5}px rgba(255, 255, 255, 0.3)` 
-                      : 'none',
-                    animationDelay: `${animationDelay}s`,
-                    transition: isAISpeaking ? 'opacity 150ms ease-out' : 'height 150ms ease-out, opacity 150ms ease-out',
+                    height: '24px',
                   }}
                 />
-              );
-            })}
-          </div>
+                {/* Filled bar based on volume - VU meter style with smooth decay */}
+                <div
+                  className="absolute bottom-0 left-0 w-full rounded-full bg-white"
+                  style={{
+                    height: `${barHeight}px`,
+                    opacity: barOpacity,
+                    boxShadow: isAISpeaking && normalizedLevel > 10
+                      ? `0 0 ${glowIntensity}px rgba(255, 255, 255, 0.9), 0 0 ${glowIntensity * 2}px rgba(255, 255, 255, 0.5)`
+                      : 'none',
+                    transition: 'height 200ms ease-out, opacity 200ms ease-out',
+                  }}
+                />
+                {/* Floating wave effect on top - moves left to right very slowly */}
+                {/* This creates a wave that flows across all bars from left to right */}
+                {isAISpeaking && barHeight > minHeight + 2 && (
+                  <div
+                    className="absolute w-full rounded-full bg-white"
+                    style={{
+                      height: '4px',
+                      bottom: `${barHeight - 2}px`,
+                      opacity: Math.min(1, barOpacity + 0.3),
+                      // Animation flows left to right: bar 0 starts immediately, bar 1 starts after 1.5s, etc.
+                      // This creates a visible wave effect flowing across the bars
+                      animation: `vuWave 15s ease-in-out ${animationDelay}s infinite`,
+                      boxShadow: `0 0 ${glowIntensity + 2}px rgba(255, 255, 255, 1)`,
+                    }}
+                  />
+                )}
+              </div>
+            );
+          })}
         </div>
       </div>
     </div>
