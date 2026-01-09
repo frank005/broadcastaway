@@ -1968,8 +1968,8 @@ function AudiencePageContent() {
                   {/* STT Language Selection and Transcription Overlay (only show when STT languages are available) */}
                   {sttAvailableLanguages.length > 0 && (
                     <>
-                      {/* Language Selection Controls - Top Left (moved down if AI overlay is visible) */}
-                      <div className={`absolute ${isAiAgentActive ? 'top-20' : 'top-2'} left-2 z-30 bg-black/90 rounded-lg p-1.5 sm:p-2 space-y-1.5 sm:space-y-2 w-[140px] sm:w-[180px] border border-gray-600 transition-all duration-300`}>
+                      {/* Language Selection Controls - Top Left (moved down if AI overlay is visible on host video) */}
+                      <div className={`absolute ${isHost && isAiAgentActive ? 'top-20' : 'top-2'} left-2 z-30 bg-black/90 rounded-lg p-1.5 sm:p-2 space-y-1.5 sm:space-y-2 w-[140px] sm:w-[180px] border border-gray-600 transition-all duration-300`}>
                         <div>
                           <label className="text-xs text-gray-300 mb-1 block font-semibold">Transcription:</label>
                           <select
