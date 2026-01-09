@@ -174,6 +174,24 @@ export async function POST(request: NextRequest) {
         console.log('⚠️ [AI AGENT API] Using fallback system message (file not available)');
       }
       
+      // Replace {HOST_NAME} placeholder with actual host name
+      // Extract display name from clientUid (format: "NAME_RANDOM_CHARS" or "NAME-RANDOM")
+      // Take the first part before underscore/hyphen, or use the whole thing if no separator
+      let hostDisplayName = 'the host';
+      if (clientUid) {
+        // Split by underscore or hyphen and take the first part
+        const parts = clientUid.split(/[_-]/);
+        hostDisplayName = parts[0] || clientUid;
+        // Replace underscores/hyphens with spaces for readability if there are multiple parts
+        if (parts.length > 1) {
+          hostDisplayName = parts[0];
+        }
+      }
+      if (systemPrompt) {
+        systemPrompt = systemPrompt.replace(/{HOST_NAME}/g, hostDisplayName);
+        console.log('✅ [AI AGENT API] Replaced {HOST_NAME} placeholder with:', hostDisplayName, '(extracted from:', clientUid, ')');
+      }
+      
       // Add main system prompt
       systemMessages.push({
         role: 'system',
