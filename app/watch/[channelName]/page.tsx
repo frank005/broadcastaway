@@ -82,6 +82,11 @@ function AudiencePageContent() {
   const [unreadCount, setUnreadCount] = useState(0);
   const isUserScrolledUpRef = useRef(false);
   const lastMessageCountRef = useRef(0);
+
+  // Transcript scroll tracking
+  const transcriptContainerRef = useRef<HTMLDivElement>(null);
+  const isTranscriptUserScrolledUpRef = useRef(false);
+  const lastTranscriptEntryCountRef = useRef(0);
   
   // Debug: Log when isRecording changes
   useEffect(() => {
@@ -1963,8 +1968,8 @@ function AudiencePageContent() {
                   {/* STT Language Selection and Transcription Overlay (only show when STT languages are available) */}
                   {sttAvailableLanguages.length > 0 && (
                     <>
-                      {/* Language Selection Controls - Top Left */}
-                      <div className="absolute top-2 left-2 z-30 bg-black/90 rounded-lg p-1.5 sm:p-2 space-y-1.5 sm:space-y-2 w-[140px] sm:w-[180px] border border-gray-600">
+                      {/* Language Selection Controls - Top Left (moved down if AI overlay is visible) */}
+                      <div className={`absolute ${isAiAgentActive ? 'top-20' : 'top-2'} left-2 z-30 bg-black/90 rounded-lg p-1.5 sm:p-2 space-y-1.5 sm:space-y-2 w-[140px] sm:w-[180px] border border-gray-600 transition-all duration-300`}>
                         <div>
                           <label className="text-xs text-gray-300 mb-1 block font-semibold">Transcription:</label>
                           <select
@@ -2143,8 +2148,8 @@ function AudiencePageContent() {
                       {/* STT Language Selection and Transcription Overlay for Promoted User (only show when STT languages are available) */}
                       {sttAvailableLanguages.length > 0 && (
                         <>
-                          {/* Language Selection Controls - Top Left */}
-                          <div className="absolute top-2 left-2 z-30 bg-black/90 rounded-lg p-1.5 sm:p-2 space-y-1.5 sm:space-y-2 w-[140px] sm:w-[180px] border border-gray-600">
+                          {/* Language Selection Controls - Top Left (moved down if AI overlay is visible) */}
+                          <div className={`absolute ${isAiAgentActive ? 'top-20' : 'top-2'} left-2 z-30 bg-black/90 rounded-lg p-1.5 sm:p-2 space-y-1.5 sm:space-y-2 w-[140px] sm:w-[180px] border border-gray-600 transition-all duration-300`}>
                             <div>
                               <label className="text-xs text-gray-300 mb-1 block font-semibold">Transcription:</label>
                               <select
@@ -2581,7 +2586,7 @@ function AudiencePageContent() {
                 </div>
 
                 {/* Transcript entries */}
-                <div className="flex-1 overflow-y-auto space-y-3 p-3 sm:p-4 pb-6 min-h-0">
+                <div ref={transcriptContainerRef} className="flex-1 overflow-y-auto space-y-3 p-3 sm:p-4 pb-6 min-h-0">
                   {transcriptEntries
                     .filter(entry => {
                       // Show final transcripts, non-final STT transcriptions (for live updates), or assistant messages from AI agent

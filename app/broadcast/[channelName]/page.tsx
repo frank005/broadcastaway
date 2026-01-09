@@ -132,6 +132,11 @@ function BroadcastPageContent() {
   const isUserScrolledUpRef = useRef(false);
   const lastMessageCountRef = useRef(0);
 
+  // Transcript scroll tracking
+  const transcriptContainerRef = useRef<HTMLDivElement>(null);
+  const isTranscriptUserScrolledUpRef = useRef(false);
+  const lastTranscriptEntryCountRef = useRef(0);
+
   // Helper function to check if user is at bottom
   const isAtBottom = (container: HTMLDivElement, threshold: number = 50) => {
     const scrollTop = container.scrollTop;
@@ -291,6 +296,97 @@ function BroadcastPageContent() {
     type: 'all'
   });
   const [chatSubTab, setChatSubTab] = useState<'chat' | 'transcript'>('chat'); // Sub-tab for Chat section
+
+  // Helper function to check if user is at bottom (for transcript)
+  const isTranscriptAtBottom = (container: HTMLDivElement, threshold: number = 50) => {
+    const scrollTop = container.scrollTop;
+    const scrollHeight = container.scrollHeight;
+    const clientHeight = container.clientHeight;
+    const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
+    return distanceFromBottom <= threshold;
+  };
+
+  // Auto-scroll transcript to bottom when new entries arrive (if user hasn't scrolled up)
+  useEffect(() => {
+    // Wait for next tick to ensure DOM is ready when tab changes
+    const timeoutId = setTimeout(() => {
+      if (!transcriptContainerRef.current || activeTab !== 'chat' || chatSubTab !== 'transcript') return;
+      
+      const container = transcriptContainerRef.current;
+      
+      // Check if user is currently at bottom
+      const atBottom = isTranscriptAtBottom(container);
+      
+      // Only auto-scroll if user hasn't manually scrolled up OR if they're at the bottom
+      if (!isTranscriptUserScrolledUpRef.current || atBottom) {
+        // Use requestAnimationFrame for smooth scrolling
+        requestAnimationFrame(() => {
+          if (transcriptContainerRef.current && activeTab === 'chat' && chatSubTab === 'transcript') {
+            transcriptContainerRef.current.scrollTop = transcriptContainerRef.current.scrollHeight;
+            isTranscriptUserScrolledUpRef.current = false;
+          }
+        });
+      }
+      
+      lastTranscriptEntryCountRef.current = transcriptEntries.length;
+    }, 0);
+    
+    return () => clearTimeout(timeoutId);
+  }, [transcriptEntries, activeTab, chatSubTab]);
+
+  // Scroll to bottom when switching to transcript tab
+  useEffect(() => {
+    if (activeTab === 'chat' && chatSubTab === 'transcript') {
+      // Wait for DOM to render
+      const timeoutId = setTimeout(() => {
+        if (transcriptContainerRef.current) {
+          transcriptContainerRef.current.scrollTop = transcriptContainerRef.current.scrollHeight;
+          isTranscriptUserScrolledUpRef.current = false;
+        }
+      }, 100);
+      
+      return () => clearTimeout(timeoutId);
+    }
+  }, [activeTab, chatSubTab]);
+
+  // Handle scroll events to detect manual scrolling (transcript)
+  useEffect(() => {
+    if (activeTab !== 'chat' || chatSubTab !== 'transcript') return;
+    
+    let scrollHandler: ((e?: Event) => void) | null = null;
+    let timeoutId: NodeJS.Timeout;
+    
+    // Wait for DOM to be ready when tab changes
+    timeoutId = setTimeout(() => {
+      const container = transcriptContainerRef.current;
+      if (!container || activeTab !== 'chat' || chatSubTab !== 'transcript') return;
+
+      scrollHandler = () => {
+        const atBottom = isTranscriptAtBottom(container);
+        
+        if (atBottom) {
+          // User scrolled back to bottom
+          isTranscriptUserScrolledUpRef.current = false;
+        } else {
+          // User scrolled up
+          isTranscriptUserScrolledUpRef.current = true;
+        }
+      };
+
+      container.addEventListener('scroll', scrollHandler, { passive: true });
+      
+      // Also check initial scroll position
+      scrollHandler();
+    }, 100);
+    
+    return () => {
+      clearTimeout(timeoutId);
+      const container = transcriptContainerRef.current;
+      if (container && scrollHandler) {
+        container.removeEventListener('scroll', scrollHandler);
+      }
+    };
+  }, [activeTab, chatSubTab]);
 
   // Virtual Background State
   const [showVirtualBgModal, setShowVirtualBgModal] = useState(false);
@@ -3517,8 +3613,8 @@ function BroadcastPageContent() {
                     
                     return (
                       <>
-                        {/* Language Selection Controls - Top Left */}
-                        <div className="absolute top-2 left-2 z-30 bg-black/90 rounded-lg p-1.5 sm:p-2 space-y-1.5 sm:space-y-2 w-[140px] sm:w-[180px] border border-gray-600">
+                        {/* Language Selection Controls - Top Left (moved down if AI overlay is visible) */}
+                        <div className={`absolute ${isAiMode ? 'top-20' : 'top-2'} left-2 z-30 bg-black/90 rounded-lg p-1.5 sm:p-2 space-y-1.5 sm:space-y-2 w-[140px] sm:w-[180px] border border-gray-600 transition-all duration-300`}>
                           <div>
                             <label className="text-xs text-gray-300 mb-1 block font-semibold">Transcription:</label>
                             <select
@@ -4234,7 +4330,7 @@ function BroadcastPageContent() {
                     </div>
 
                     {/* Transcript entries */}
-                    <div className="flex-1 overflow-y-auto space-y-3 p-3 sm:p-4 pb-6 min-h-0">
+                    <div ref={transcriptContainerRef} className="flex-1 overflow-y-auto space-y-3 p-3 sm:p-4 pb-6 min-h-0">
                       {transcriptEntries
                         .filter(entry => {
                           // Show final transcripts, non-final STT transcriptions (for live updates), or assistant messages from AI agent
