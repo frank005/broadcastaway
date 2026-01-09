@@ -5,7 +5,7 @@ import { useParams, useSearchParams, useRouter } from 'next/navigation';
 import { 
   Mic, MicOff, Video, VideoOff, ScreenShare, PhoneOff, 
   Users, Settings, Send, Rocket, Download, Server, Bot, Play, Pause,
-  Check, X, RefreshCw, Upload, Clock, Copy, HelpCircle, User, BarChart3, Circle, MoreVertical, Image, Palette, Sparkles, Languages, MessageSquare
+  Check, X, RefreshCw, Upload, Clock, Copy, HelpCircle, User, BarChart3, Circle, MoreVertical, Image, Palette, Sparkles, Languages, MessageSquare, FileText, Filter
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import agoraService from '../../../src/services/agoraService';
@@ -265,6 +265,32 @@ function BroadcastPageContent() {
   const [sttTranslations, setSttTranslations] = useState<Map<number, Map<string, { text: string; sourceLang: string; targetLang: string; timestamp: Date }>>>(new Map());
   // Language selection for each user (uid -> { transcriptionLang: string, translationLang: string })
   const [sttUserLanguageSelections, setSttUserLanguageSelections] = useState<Map<number, { transcriptionLang: string; translationLang?: string }>>(new Map());
+
+  // Transcript State - stores all transcript entries (AI agent + STT)
+  type TranscriptEntry = {
+    id: string;
+    speaker: 'user' | 'assistant' | string; // 'user' or 'assistant' for AI agent, or display name for STT
+    text: string;
+    isFinal: boolean;
+    timestamp: Date;
+    source: 'ai-agent' | 'stt'; // Track source of transcript
+    language?: string; // For STT transcripts
+    uid?: number; // For STT transcripts
+    isTranslation?: boolean; // True if this is a translation entry (for STT)
+  };
+  const [transcriptEntries, setTranscriptEntries] = useState<TranscriptEntry[]>([]);
+  const [transcriptFilter, setTranscriptFilter] = useState<{
+    speaker?: string; // 'all', 'user', 'assistant', or specific display name
+    source?: 'all' | 'ai-agent' | 'stt';
+    language?: string; // 'all' or specific language code
+    type?: 'all' | 'transcription' | 'translation'; // Filter by transcription or translation (for STT)
+  }>({
+    speaker: 'all',
+    source: 'all',
+    language: 'all',
+    type: 'all'
+  });
+  const [chatSubTab, setChatSubTab] = useState<'chat' | 'transcript'>('chat'); // Sub-tab for Chat section
 
   // Virtual Background State
   const [showVirtualBgModal, setShowVirtualBgModal] = useState(false);
@@ -534,8 +560,83 @@ function BroadcastPageContent() {
         }
       };
 
+      // Transcript callback for AI agent
+      agoraService.onTranscriptReceived = (speaker: 'user' | 'assistant', text: string, isFinal: boolean, timestamp: Date) => {
+        if (!isMounted) return;
+        console.log('📝 [PAGE] AI Agent transcript received:', { speaker, text, isFinal });
+        
+        if (!text.trim()) return; // Skip empty transcripts
+        
+        setTranscriptEntries(prev => {
+          // For non-final messages, try to find and update an existing entry (same speaker, recent timestamp)
+          // For final messages, we want to ensure we have the final version
+          if (!isFinal) {
+            // Find the most recent non-final entry for this speaker from AI agent
+            const recentEntry = prev
+              .filter(e => e.source === 'ai-agent' && e.speaker === speaker && !e.isFinal)
+              .sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime())[0];
+            
+            if (recentEntry && timestamp.getTime() - recentEntry.timestamp.getTime() < 5000) {
+              // Update existing entry (within 5 seconds)
+              return prev.map(e => 
+                e.id === recentEntry.id 
+                  ? { ...e, text: text.trim(), timestamp }
+                  : e
+              );
+            }
+          }
+          
+          // Add new entry (either final, or non-final without recent entry)
+          // For final entries, also remove any non-final entries for the same speaker that are very recent
+          const newEntry = {
+            id: `ai-${speaker}-${Date.now()}-${Math.random()}`,
+            speaker,
+            text: text.trim(),
+            isFinal,
+            timestamp,
+            source: 'ai-agent' as const
+          };
+          
+          if (isFinal) {
+            // Remove non-final entries for the same speaker that are very recent (within 10 seconds)
+            const filtered = prev.filter(e => 
+              !(e.source === 'ai-agent' && 
+                e.speaker === speaker && 
+                !e.isFinal && 
+                timestamp.getTime() - e.timestamp.getTime() < 10000)
+            );
+            return [...filtered, newEntry];
+          } else {
+            return [...prev, newEntry];
+          }
+        });
+        
+        // For assistant messages that are non-final, set a timeout to mark them as final if they stop updating
+        // This handles cases where assistant messages might not get a final flag from the AI agent
+        if (!isFinal && speaker === 'assistant') {
+          const entryId = `ai-assistant-${timestamp.getTime()}-${Math.random()}`;
+          setTimeout(() => {
+            if (!isMounted) return;
+            setTranscriptEntries(prev => {
+              // Find non-final assistant entries that match this text and haven't been updated recently
+              return prev.map(e => {
+                if (e.source === 'ai-agent' && 
+                    e.speaker === 'assistant' && 
+                    !e.isFinal && 
+                    e.text === text.trim() &&
+                    timestamp.getTime() - e.timestamp.getTime() < 100) {
+                  // Mark as final if it's been 3 seconds and hasn't been updated
+                  return { ...e, isFinal: true };
+                }
+                return e;
+              });
+            });
+          }, 3000); // Mark as final after 3 seconds of no updates
+        }
+      };
+
       // STT Callbacks
-      agoraService.onTranscriptionReceived = (uid: number, text: string, language: string) => {
+      agoraService.onTranscriptionReceived = (uid: number, text: string, language: string, isFinal?: boolean) => {
         if (!isMounted) return;
         console.log('📝 [PAGE] Transcription received:', { uid, text, language });
         // Store transcription - always store it, let the UI filter by language selection
@@ -545,6 +646,78 @@ function BroadcastPageContent() {
           console.log('📝 [PAGE] Stored transcription for UID:', uid, 'Total transcriptions:', newMap.size, 'All UIDs:', Array.from(newMap.keys()));
           return newMap;
         });
+        
+        // Also add to transcript entries (both final and non-final for live updates)
+        const displayName = agoraService.displayNameMap?.get(uid) || agoraService.rtmUserIdToDisplayNameMap?.get(agoraService.userIdMap?.get(uid) || '') || `User ${uid}`;
+        const finalFlag = isFinal !== undefined ? isFinal : true; // Default to true if not provided
+        
+        if (text.trim()) {
+          setTranscriptEntries(prev => {
+            if (!finalFlag) {
+              // For non-final entries, update the most recent non-final entry for this UID
+              const recentEntry = prev
+                .filter(e => e.source === 'stt' && e.uid === uid && !e.isFinal && !e.isTranslation)
+                .sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime())[0];
+
+              if (recentEntry && Date.now() - recentEntry.timestamp.getTime() < 5000) {
+                // Update existing non-final entry
+                return prev.map(e =>
+                  e.id === recentEntry.id
+                    ? { ...e, text: text.trim(), timestamp: new Date() }
+                    : e
+                );
+              } else {
+                // Add new non-final entry
+                return [...prev, {
+                  id: `stt-transcription-${uid}-${Date.now()}-${Math.random()}`,
+                  speaker: displayName,
+                  text: text.trim(),
+                  isFinal: false,
+                  timestamp: new Date(),
+                  source: 'stt' as const,
+                  language: language,
+                  uid: uid,
+                  isTranslation: false
+                }];
+              }
+            } else {
+              // For final entries, replace any non-final entries and add the final one
+              const filtered = prev.filter(e =>
+                !(e.source === 'stt' &&
+                  e.uid === uid &&
+                  !e.isFinal &&
+                  !e.isTranslation &&
+                  Date.now() - e.timestamp.getTime() < 10000)
+              );
+              
+              // Check if there's already a final entry with the same text (avoid duplicates)
+              const existingFinal = filtered.find(e =>
+                e.source === 'stt' &&
+                e.uid === uid &&
+                e.isFinal &&
+                !e.isTranslation &&
+                e.text === text.trim() &&
+                e.language === language
+              );
+              
+              if (!existingFinal) {
+                return [...filtered, {
+                  id: `stt-transcription-${uid}-${Date.now()}-${Math.random()}`,
+                  speaker: displayName,
+                  text: text.trim(),
+                  isFinal: true,
+                  timestamp: new Date(),
+                  source: 'stt' as const,
+                  language: language,
+                  uid: uid,
+                  isTranslation: false
+                }];
+              }
+              
+              return filtered;
+            }
+          });
+        }
       };
 
       agoraService.onTranslationReceived = (uid: number, text: string, sourceLang: string, targetLang: string) => {
@@ -560,6 +733,48 @@ function BroadcastPageContent() {
           console.log('🌐 [PAGE] Stored translation for UID:', uid, 'Target:', targetLang, 'User has', userTranslations.size, 'translation languages');
           return newMap;
         });
+        
+        // Also add translation to transcript entries
+        const displayName = agoraService.displayNameMap?.get(uid) || agoraService.rtmUserIdToDisplayNameMap?.get(agoraService.userIdMap?.get(uid) || '') || `User ${uid}`;
+        if (text.trim()) {
+          setTranscriptEntries(prev => {
+            // Add translations as separate entries with simpler format: "[Language]: text"
+            const translationText = `[${targetLang}]: ${text.trim()}`;
+            
+            // Check if this is an update to an existing translation entry (same UID, same targetLang, recent timestamp)
+            const recentEntry = prev.find(e => 
+              e.source === 'stt' && 
+              e.uid === uid && 
+              e.language === targetLang &&
+              e.isTranslation &&
+              e.timestamp && 
+              Date.now() - e.timestamp.getTime() < 2000 // Within 2 seconds
+            );
+            
+            if (recentEntry) {
+              // Update existing translation entry
+              return prev.map(e => 
+                e.id === recentEntry.id 
+                  ? { ...e, text: translationText, timestamp: new Date(), isFinal: true }
+                  : e
+              );
+            } else {
+              // Add new translation entry - each translation is a separate entry
+              // Multiple translations can exist for the same user, and they're all shown
+              return [...prev, {
+                id: `stt-translation-${uid}-${targetLang}-${Date.now()}-${Math.random()}`,
+                speaker: displayName,
+                text: translationText,
+                isFinal: true, // Translations are typically final when received
+                timestamp: new Date(),
+                source: 'stt',
+                language: targetLang,
+                uid,
+                isTranslation: true // Mark as translation
+              }];
+            }
+          });
+        }
       };
 
       agoraService.onDemoted = (userId: string) => {
@@ -2970,7 +3185,7 @@ function BroadcastPageContent() {
   };
 
   return (
-    <div className="flex flex-col h-screen bg-agora-dark text-white overflow-hidden">
+    <div className="flex flex-col h-[calc(100vh-8rem)] max-h-[calc(100vh-8rem)] bg-agora-dark text-white overflow-hidden -mx-4 -my-6 w-[calc(100%+2rem)]">
       {/* Header */}
       <header className="flex items-center justify-between px-2 sm:px-4 lg:px-6 py-2 sm:py-3 lg:py-4 bg-agora-dark border-b border-gray-800 overflow-hidden">
         <div className="flex items-center space-x-1.5 sm:space-x-4 min-w-0 flex-1 overflow-hidden">
@@ -3096,12 +3311,12 @@ function BroadcastPageContent() {
 
       {/* OBS Control Bar - Separate section below header */}
       {obsBarOpen && (
-        <div className="px-6 py-2 bg-gray-900 border-b border-gray-800">
+        <div className="px-6 py-0.5 bg-gray-900 border-b border-gray-800 flex-shrink-0">
           <div className="flex items-center gap-2 flex-wrap">
             {/* OBS Setup Instructions Button - Always visible */}
             <button
               onClick={() => setShowOBSSetupInstructions(true)}
-              className="flex items-center space-x-1 bg-gray-700 hover:bg-gray-600 px-2 py-1 rounded text-xs"
+              className="flex items-center space-x-1 bg-gray-700 hover:bg-gray-600 px-1.5 py-0.5 rounded text-[10px]"
               title="OBS WebSocket Setup Instructions"
             >
             <HelpCircle size={14} />
@@ -3111,13 +3326,13 @@ function BroadcastPageContent() {
           {/* OBS Preview */}
           <div 
             id="obs-preview-bar" 
-            className="w-20 h-12 bg-black rounded flex flex-col items-center justify-center text-gray-400 text-xs p-1 cursor-pointer hover:border-agora-blue border-2 border-transparent"
+            className="w-16 h-8 bg-black rounded flex flex-col items-center justify-center text-gray-400 text-[10px] p-0.5 cursor-pointer hover:border-agora-blue border-2 border-transparent"
             title="OBS Preview"
             onClick={toggleOBSPreviewPIP}
           >
-            <div className="text-[10px]">OBS</div>
+            <div className="text-[9px]">OBS</div>
           </div>
-          <div id="obs-preview-status-bar" className="text-xs text-gray-400 w-24"></div>
+          <div id="obs-preview-status-bar" className="text-[10px] text-gray-400 w-20"></div>
           
           {/* Port Input */}
           <input 
@@ -3125,7 +3340,7 @@ function BroadcastPageContent() {
             placeholder="Port (4455)" 
             value={obsPort}
             onChange={(e) => setObsPort(e.target.value)}
-            className="w-[80px] px-2 py-1 text-xs h-10 bg-gray-700 border border-gray-600 rounded"
+            className="w-[70px] px-1.5 py-0.5 text-[10px] h-7 bg-gray-700 border border-gray-600 rounded"
             title="OBS WebSocket port"
           />
           
@@ -3135,7 +3350,7 @@ function BroadcastPageContent() {
             placeholder="OBS Password" 
             value={obsPassword}
             onChange={(e) => setObsPassword(e.target.value)}
-            className="w-[120px] px-2 py-1 text-xs h-10 bg-gray-700 border border-gray-600 rounded"
+            className="w-[100px] px-1.5 py-0.5 text-[10px] h-7 bg-gray-700 border border-gray-600 rounded"
             title="OBS WebSocket password"
           />
           
@@ -3143,20 +3358,20 @@ function BroadcastPageContent() {
           {!obsConnected ? (
             <button 
               onClick={connectOBS}
-              className="w-12 h-10 flex items-center justify-center bg-green-600 hover:bg-green-700 rounded transition-colors"
+              className="w-9 h-7 flex items-center justify-center bg-green-600 hover:bg-green-700 rounded transition-colors"
               title="Connect to OBS"
             >
-              <Check size={20} />
+              <Check size={14} />
             </button>
           ) : (
             <>
-              <div className="text-xs text-green-400 min-w-[80px]">✓ Connected</div>
+              <div className="text-[10px] text-green-400 min-w-[70px]">✓ Connected</div>
               <button 
                 onClick={disconnectOBS}
-                className="w-12 h-10 flex items-center justify-center bg-red-600 hover:bg-red-700 rounded transition-colors"
+                className="w-9 h-7 flex items-center justify-center bg-red-600 hover:bg-red-700 rounded transition-colors"
                 title="Disconnect from OBS"
               >
-                <X size={20} />
+                <X size={14} />
               </button>
             </>
           )}
@@ -3166,32 +3381,32 @@ function BroadcastPageContent() {
             <>
               <button 
                 onClick={startOBSStream}
-                className="w-12 h-10 flex items-center justify-center bg-green-600 hover:bg-green-700 rounded transition-colors"
+                className="w-9 h-7 flex items-center justify-center bg-green-600 hover:bg-green-700 rounded transition-colors"
                 title="Start OBS Stream"
               >
-                <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle></svg>
+                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle></svg>
               </button>
               <button 
                 onClick={stopOBSStream}
-                className="w-12 h-10 flex items-center justify-center bg-red-600 hover:bg-red-700 rounded transition-colors"
+                className="w-9 h-7 flex items-center justify-center bg-red-600 hover:bg-red-700 rounded transition-colors"
                 title="Stop OBS Stream"
               >
-                <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12"></rect></svg>
+                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12"></rect></svg>
               </button>
               <button 
                 onClick={getOBSStreamStatus}
-                className="w-12 h-10 flex items-center justify-center bg-gray-600 hover:bg-gray-500 rounded transition-colors"
+                className="w-9 h-7 flex items-center justify-center bg-gray-600 hover:bg-gray-500 rounded transition-colors"
                 title="Check Stream Status"
               >
-                <Clock size={20} />
+                <Clock size={14} />
               </button>
-              <div className="text-xs text-gray-400 min-w-[100px]">{obsStreamingStatus}</div>
+              <div className="text-[10px] text-gray-400 min-w-[80px]">{obsStreamingStatus}</div>
               
               {/* Profile Controls */}
               <select 
                 value={showNewProfileInput ? '__create_new__' : obsCurrentProfile}
                 onChange={(e) => handleProfileSelectChange(e.target.value)}
-                className="px-2 py-1 text-xs h-10 bg-gray-700 border border-gray-600 rounded"
+                className="px-1.5 py-0.5 text-[10px] h-7 bg-gray-700 border border-gray-600 rounded"
                 title="Select OBS Profile"
               >
                 <option value="">Profile...</option>
@@ -3207,12 +3422,12 @@ function BroadcastPageContent() {
                     placeholder="Name"
                     value={obsNewProfileName}
                     onChange={(e) => setObsNewProfileName(e.target.value)}
-                    className="px-2 py-1 text-xs h-10 bg-gray-700 border border-gray-600 rounded"
+                    className="px-1.5 py-0.5 text-[10px] h-7 bg-gray-700 border border-gray-600 rounded"
                     onKeyPress={(e) => e.key === 'Enter' && createOBSProfile()}
                   />
                   <button
                     onClick={createOBSProfile}
-                    className="px-2 py-1 text-xs h-10 bg-green-600 hover:bg-green-700 rounded"
+                    className="px-1.5 py-0.5 text-[10px] h-7 bg-green-600 hover:bg-green-700 rounded"
                   >
                     Create
                   </button>
@@ -3220,17 +3435,17 @@ function BroadcastPageContent() {
               )}
               <button 
                 onClick={listOBSProfiles}
-                className="w-12 h-10 flex items-center justify-center bg-gray-600 hover:bg-gray-500 rounded transition-colors"
+                className="w-9 h-7 flex items-center justify-center bg-gray-600 hover:bg-gray-500 rounded transition-colors"
                 title="Refresh Profiles"
               >
-                <RefreshCw size={16} />
+                <RefreshCw size={12} />
               </button>
               <button 
                 onClick={() => updateOBSProfile()}
-                className="w-12 h-10 flex items-center justify-center bg-green-600 hover:bg-green-700 rounded transition-colors"
+                className="w-9 h-7 flex items-center justify-center bg-green-600 hover:bg-green-700 rounded transition-colors"
                 title="Update Profile Settings"
               >
-                <Upload size={16} />
+                <Upload size={12} />
               </button>
               <button
                 onClick={() => setShowOBSSettings(true)}
@@ -3769,8 +3984,8 @@ function BroadcastPageContent() {
         </div>
 
         {/* Sidebar */}
-        <div className="w-full lg:w-80 xl:w-96 bg-gray-900 border-t lg:border-t-0 lg:border-l border-gray-800 flex flex-col max-h-[50vh] lg:max-h-none relative">
-          <div className="flex border-b border-gray-800">
+        <div className="w-full lg:w-80 xl:w-96 bg-gray-900 border-t lg:border-t-0 lg:border-l border-gray-800 flex flex-col h-full lg:h-auto relative min-h-0">
+          <div className="flex border-b border-gray-800 flex-shrink-0">
             <button 
               onClick={() => setActiveTab('chat')}
               className={`flex-1 py-4 text-sm font-bold border-b-2 transition-all ${activeTab === 'chat' ? 'border-agora-blue text-agora-blue' : 'border-transparent text-gray-500'}`}
@@ -3809,69 +4024,270 @@ function BroadcastPageContent() {
             </button>
           )}
 
-          <div className="flex-1 overflow-y-auto p-3 sm:p-4">
+          <div className="flex-1 overflow-y-auto p-3 sm:p-4 min-h-0">
             {activeTab === 'chat' && (
-              <div className="flex-1 flex flex-col h-full">
-                {/* Participants List - Always visible at top of chat */}
-                <div className="mb-3 sm:mb-4 pb-3 sm:pb-4 border-b border-gray-800 flex-shrink-0">
-                  <h3 className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-3">Participants ({participants.length + 1})</h3>
-                  <div className="space-y-2 max-h-32 overflow-y-auto">
-                    {/* Host (self) */}
-                    <div className="flex items-center space-x-2 bg-agora-blue/20 p-2 rounded-lg border border-agora-blue/50">
-                      <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                      <span className="text-sm font-medium">{userName} (You - Host)</span>
-                    </div>
-                    {/* Other participants */}
-                    {participants.map(userId => {
-                      const isPromoted = remoteUsers.some(u => u.rtmUserId === userId);
-                      // Get display name from map, fallback to userId if not found
-                      const displayName = agoraService.rtmUserIdToDisplayNameMap?.get(userId) || userId;
-                      return (
-                        <div key={userId} className="flex items-center justify-between bg-gray-800 p-2 rounded-lg border border-gray-700">
-                          <div className="flex items-center space-x-2">
-                            <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                            <span className="text-sm font-medium">{displayName}</span>
-                            {isPromoted && (
-                              <span className="text-xs bg-yellow-600 px-2 py-0.5 rounded-full">On Stage</span>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })}
-                    {participants.length === 0 && <p className="text-gray-600 text-xs">No other participants</p>}
-                  </div>
+              <div className="flex flex-col h-full min-h-0">
+                {/* Sub-tabs for Chat section */}
+                <div className="flex border-b border-gray-800 mb-4">
+                  <button 
+                    onClick={() => setChatSubTab('chat')}
+                    className={`flex-1 py-3 text-sm font-bold border-b-2 transition-all ${chatSubTab === 'chat' ? 'border-agora-blue text-agora-blue' : 'border-transparent text-gray-500'}`}
+                  >
+                    Chat
+                  </button>
+                  <button 
+                    onClick={() => setChatSubTab('transcript')}
+                    className={`flex-1 py-3 text-sm font-bold border-b-2 transition-all ${chatSubTab === 'transcript' ? 'border-agora-blue text-agora-blue' : 'border-transparent text-gray-500'}`}
+                  >
+                    Transcript
+                  </button>
                 </div>
-                {!rtmLoggedIn && (
-                  <div className="bg-yellow-600/20 border border-yellow-600/50 rounded-lg p-3 m-4 flex-shrink-0">
-                    <p className="text-yellow-400 text-sm font-medium">
-                      ⚠️ Chat is disabled - RTM not logged in. Chat messages will not be sent or received.
-                    </p>
-                  </div>
-                )}
-                <div 
-                  ref={chatContainerRef}
-                  className="flex-1 overflow-y-auto space-y-2 sm:space-y-4 p-3 sm:p-4 min-h-0"
-                >
-                  {chatMessages.map((msg, i) => (
-                    <div key={i} className={`flex flex-col ${msg.senderId === 'You' ? 'items-end' : 'items-start'}`}>
-                      {!msg.isSystem && (
-                        <span className="text-xs text-gray-500 mb-1">{msg.senderId}</span>
-                      )}
-                      <div className={`px-4 py-2 rounded-2xl max-w-[80%] ${
-                        msg.isSystem
-                          ? 'bg-gray-800/50 text-gray-400 italic border border-gray-700/50'
-                          : msg.senderId === 'You' 
-                          ? 'bg-agora-blue text-white' 
-                          : 'bg-gray-800 text-gray-300'
-                      }`}>
-                        {msg.content}
+
+                {/* Chat sub-tab content */}
+                {chatSubTab === 'chat' && (
+                  <div className="flex-1 flex flex-col h-full">
+                    {/* Participants List - Always visible at top of chat */}
+                    <div className="mb-3 sm:mb-4 pb-3 sm:pb-4 border-b border-gray-800 flex-shrink-0">
+                      <h3 className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-3">Participants ({participants.length + 1})</h3>
+                      <div className="space-y-2 max-h-32 overflow-y-auto">
+                        {/* Host (self) */}
+                        <div className="flex items-center space-x-2 bg-agora-blue/20 p-2 rounded-lg border border-agora-blue/50">
+                          <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                          <span className="text-sm font-medium">{userName} (You - Host)</span>
+                        </div>
+                        {/* Other participants */}
+                        {participants.map(userId => {
+                          const isPromoted = remoteUsers.some(u => u.rtmUserId === userId);
+                          // Get display name from map, fallback to userId if not found
+                          const displayName = agoraService.rtmUserIdToDisplayNameMap?.get(userId) || userId;
+                          return (
+                            <div key={userId} className="flex items-center justify-between bg-gray-800 p-2 rounded-lg border border-gray-700">
+                              <div className="flex items-center space-x-2">
+                                <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                                <span className="text-sm font-medium">{displayName}</span>
+                                {isPromoted && (
+                                  <span className="text-xs bg-yellow-600 px-2 py-0.5 rounded-full">On Stage</span>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                        {participants.length === 0 && <p className="text-gray-600 text-xs">No other participants</p>}
                       </div>
                     </div>
-                  ))}
-                </div>
+                    {!rtmLoggedIn && (
+                      <div className="bg-yellow-600/20 border border-yellow-600/50 rounded-lg p-3 m-4 flex-shrink-0">
+                        <p className="text-yellow-400 text-sm font-medium">
+                          ⚠️ Chat is disabled - RTM not logged in. Chat messages will not be sent or received.
+                        </p>
+                      </div>
+                    )}
+                    <div 
+                      ref={chatContainerRef}
+                      className="flex-1 overflow-y-auto space-y-2 sm:space-y-4 p-3 sm:p-4 min-h-0"
+                    >
+                      {chatMessages.map((msg, i) => (
+                        <div key={i} className={`flex flex-col ${msg.senderId === 'You' ? 'items-end' : 'items-start'}`}>
+                          {!msg.isSystem && (
+                            <span className="text-xs text-gray-500 mb-1">{msg.senderId}</span>
+                          )}
+                          <div className={`px-4 py-2 rounded-2xl max-w-[80%] ${
+                            msg.isSystem
+                              ? 'bg-gray-800/50 text-gray-400 italic border border-gray-700/50'
+                              : msg.senderId === 'You' 
+                              ? 'bg-agora-blue text-white' 
+                              : 'bg-gray-800 text-gray-300'
+                          }`}>
+                            {msg.content}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Transcript sub-tab content */}
+                {chatSubTab === 'transcript' && (
+                  <div className="flex flex-col h-full min-h-0">
+                    {/* Filter controls */}
+                    <div className="mb-4 space-y-3 flex-shrink-0">
+                      <div className="flex items-center gap-2">
+                        <Filter size={16} className="text-gray-400" />
+                        <span className="text-xs font-bold text-gray-500 uppercase tracking-widest">Filters</span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        {/* Speaker filter */}
+                        <div>
+                          <label className="text-xs text-gray-400 mb-1 block">Speaker</label>
+                          <select
+                            value={transcriptFilter.speaker || 'all'}
+                            onChange={(e) => setTranscriptFilter(prev => ({ ...prev, speaker: e.target.value }))}
+                            className="w-full bg-gray-800 border border-gray-700 rounded-lg px-2 py-1.5 text-sm text-white"
+                          >
+                            <option value="all">All Speakers</option>
+                            <option value="user">User (AI Agent)</option>
+                            <option value="assistant">Assistant (AI Agent)</option>
+                            {Array.from(new Set(transcriptEntries.filter(e => e.source === 'stt').map(e => e.speaker))).map(speaker => (
+                              <option key={speaker} value={speaker}>{speaker}</option>
+                            ))}
+                          </select>
+                        </div>
+                        {/* Source filter */}
+                        <div>
+                          <label className="text-xs text-gray-400 mb-1 block">Source</label>
+                          <select
+                            value={transcriptFilter.source || 'all'}
+                            onChange={(e) => setTranscriptFilter(prev => ({ ...prev, source: e.target.value as any }))}
+                            className="w-full bg-gray-800 border border-gray-700 rounded-lg px-2 py-1.5 text-sm text-white"
+                          >
+                            <option value="all">All Sources</option>
+                            <option value="ai-agent">AI Agent</option>
+                            <option value="stt">Speech-to-Text</option>
+                          </select>
+                        </div>
+                        {/* Type filter (Transcription/Translation) - only show for STT */}
+                        {transcriptFilter.source === 'stt' || transcriptFilter.source === 'all' ? (
+                          <div>
+                            <label className="text-xs text-gray-400 mb-1 block">Type (STT)</label>
+                            <select
+                              value={transcriptFilter.type || 'all'}
+                              onChange={(e) => setTranscriptFilter(prev => ({ ...prev, type: e.target.value as any }))}
+                              className="w-full bg-gray-800 border border-gray-700 rounded-lg px-2 py-1.5 text-sm text-white"
+                            >
+                              <option value="all">All (Transcription + Translation)</option>
+                              <option value="transcription">Transcription Only</option>
+                              <option value="translation">Translation Only</option>
+                            </select>
+                          </div>
+                        ) : null}
+                        {/* Language filter - show for STT entries, filtered by type if selected */}
+                        {(transcriptFilter.source === 'stt' || transcriptFilter.source === 'all') && (
+                          <div>
+                            <label className="text-xs text-gray-400 mb-1 block">Language</label>
+                            <select
+                              value={transcriptFilter.language || 'all'}
+                              onChange={(e) => setTranscriptFilter(prev => ({ ...prev, language: e.target.value }))}
+                              className="w-full bg-gray-800 border border-gray-700 rounded-lg px-2 py-1.5 text-sm text-white"
+                            >
+                              <option value="all">All Languages</option>
+                              {(() => {
+                                // Get ALL available languages from ALL entries (not filtered)
+                                // This allows filtering by any language that exists in the transcript
+                                const allSTTEntries = transcriptEntries.filter(e => e.source === 'stt' && e.language);
+                                const languages = Array.from(new Set(
+                                  allSTTEntries.map(e => e.language!)
+                                )).sort();
+                                return languages.map(lang => (
+                                  <option key={lang} value={lang}>{lang}</option>
+                                ));
+                              })()}
+                            </select>
+                          </div>
+                        )}
+                      </div>
+                      {/* Export button */}
+                      <button
+                        onClick={() => {
+                          const filtered = transcriptEntries.filter(entry => {
+                            if (transcriptFilter.speaker && transcriptFilter.speaker !== 'all' && entry.speaker !== transcriptFilter.speaker) return false;
+                            if (transcriptFilter.source && transcriptFilter.source !== 'all' && entry.source !== transcriptFilter.source) return false;
+                            if (transcriptFilter.language && transcriptFilter.language !== 'all' && entry.language !== transcriptFilter.language) return false;
+                            if (transcriptFilter.type && transcriptFilter.type !== 'all' && entry.source === 'stt') {
+                              const isTranslation = entry.isTranslation === true;
+                              if (transcriptFilter.type === 'transcription' && isTranslation) return false;
+                              if (transcriptFilter.type === 'translation' && !isTranslation) return false;
+                            }
+                            return entry.isFinal; // Only export final transcripts
+                          });
+                          
+                          const transcriptText = filtered.map(entry => {
+                            const time = entry.timestamp.toLocaleTimeString();
+                            const speakerLabel = entry.speaker === 'user' ? 'User' : entry.speaker === 'assistant' ? 'Assistant' : entry.speaker;
+                            return `[${time}] ${speakerLabel}: ${entry.text}`;
+                          }).join('\n\n');
+                          
+                          const blob = new Blob([transcriptText], { type: 'text/plain' });
+                          const url = URL.createObjectURL(blob);
+                          const a = document.createElement('a');
+                          a.href = url;
+                          a.download = `transcript-${new Date().toISOString().split('T')[0]}.txt`;
+                          document.body.appendChild(a);
+                          a.click();
+                          document.body.removeChild(a);
+                          URL.revokeObjectURL(url);
+                          toast.success('Transcript exported!');
+                        }}
+                        className="w-full bg-agora-blue hover:bg-blue-600 text-white px-4 py-2 rounded-lg flex items-center justify-center gap-2 text-sm font-medium transition-all"
+                        disabled={transcriptEntries.filter(e => e.isFinal).length === 0}
+                      >
+                        <Download size={16} />
+                        Export Transcript
+                      </button>
+                    </div>
+
+                    {/* Transcript entries */}
+                    <div className="flex-1 overflow-y-auto space-y-3 p-3 sm:p-4 pb-6 min-h-0">
+                      {transcriptEntries
+                        .filter(entry => {
+                          // Show final transcripts, non-final STT transcriptions (for live updates), or assistant messages from AI agent
+                          if (!entry.isFinal && 
+                              !(entry.source === 'ai-agent' && entry.speaker === 'assistant') &&
+                              !(entry.source === 'stt' && !entry.isTranslation)) return false;
+                          if (transcriptFilter.speaker && transcriptFilter.speaker !== 'all' && entry.speaker !== transcriptFilter.speaker) return false;
+                          if (transcriptFilter.source && transcriptFilter.source !== 'all' && entry.source !== transcriptFilter.source) return false;
+                          if (transcriptFilter.language && transcriptFilter.language !== 'all' && entry.language !== transcriptFilter.language) return false;
+                          // Filter by type (transcription/translation) - only applies to STT entries
+                          if (transcriptFilter.type && transcriptFilter.type !== 'all' && entry.source === 'stt') {
+                            const isTranslation = entry.isTranslation === true;
+                            if (transcriptFilter.type === 'transcription' && isTranslation) return false;
+                            if (transcriptFilter.type === 'translation' && !isTranslation) return false;
+                          }
+                          return true;
+                        })
+                        .map((entry) => {
+                          const time = entry.timestamp.toLocaleTimeString();
+                          const speakerLabel = entry.speaker === 'user' ? 'User' : entry.speaker === 'assistant' ? 'Assistant' : entry.speaker;
+                          const isAI = entry.source === 'ai-agent';
+                          
+                          return (
+                            <div key={entry.id} className="bg-gray-800 p-3 rounded-lg border border-gray-700 max-w-full">
+                              <div className="flex items-center justify-between mb-2">
+                                <div className="flex items-center gap-2">
+                                  <span className={`text-xs font-bold px-2 py-0.5 rounded ${
+                                    isAI && entry.speaker === 'user' ? 'bg-blue-600/30 text-blue-400' :
+                                    isAI && entry.speaker === 'assistant' ? 'bg-purple-600/30 text-purple-400' :
+                                    'bg-gray-700 text-gray-300'
+                                  }`}>
+                                    {speakerLabel}
+                                  </span>
+                                  <span className="text-xs text-gray-500">{time}</span>
+                                  {entry.language && (
+                                    <span className="text-xs text-gray-600">({entry.language})</span>
+                                  )}
+                                </div>
+                                {/* Show source badge for both AI Agent and STT entries for filtering clarity */}
+                                <span className={`text-xs px-2 py-0.5 rounded ${
+                                  entry.source === 'ai-agent' ? 'bg-purple-600/20 text-purple-400' : 'bg-green-600/20 text-green-400'
+                                }`}>
+                                  {entry.source === 'ai-agent' ? 'AI Agent' : 'STT'}
+                                </span>
+                              </div>
+                              <p className="text-sm text-gray-200 break-words">{entry.text}</p>
+                            </div>
+                          );
+                        })}
+                      {transcriptEntries.filter(e => e.isFinal).length === 0 && (
+                        <div className="text-center py-8 text-gray-500 text-sm">
+                          <FileText size={32} className="mx-auto mb-2 opacity-50" />
+                          <p>No transcript entries yet</p>
+                          <p className="text-xs mt-1">Transcripts will appear here when available</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
-
 
             {activeTab === 'participants' && (
               <div className="space-y-6">
@@ -4146,30 +4562,33 @@ function BroadcastPageContent() {
             )}
           </div>
 
-          <div className="p-3 sm:p-4 border-t border-gray-800 bg-gray-900">
-            <div className="flex space-x-2">
-              <input 
-                type="text" 
-                placeholder={rtmLoggedIn ? "Type a message..." : "Chat disabled - RTM not logged in"}
-                disabled={!rtmLoggedIn}
-                className={`flex-1 bg-gray-800 border border-gray-700 rounded-xl px-3 sm:px-4 py-2 text-xs sm:text-sm focus:outline-none focus:ring-1 focus:ring-agora-blue ${
-                  !rtmLoggedIn ? 'opacity-50 cursor-not-allowed' : ''
-                }`}
-                value={newMessage}
-                onChange={(e) => setNewMessage(e.target.value)}
-                onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
-              />
-              <button 
-                onClick={handleSendMessage}
-                disabled={!rtmLoggedIn}
-                className={`p-2 bg-agora-blue rounded-xl text-white flex-shrink-0 hover:bg-blue-600 transition-all ${
-                  !rtmLoggedIn ? 'opacity-50 cursor-not-allowed' : ''
-                }`}
-              >
-                <Send size={18} className="sm:w-5 sm:h-5" />
-              </button>
+          {/* Chat Input - Only show when on Chat tab and Chat sub-tab */}
+          {activeTab === 'chat' && chatSubTab === 'chat' && (
+            <div className="p-3 sm:p-4 border-t border-gray-800 bg-gray-900 flex-shrink-0">
+              <div className="flex space-x-2">
+                <input 
+                  type="text" 
+                  placeholder={rtmLoggedIn ? "Type a message..." : "Chat disabled - RTM not logged in"}
+                  disabled={!rtmLoggedIn}
+                  className={`flex-1 bg-gray-800 border border-gray-700 rounded-xl px-3 sm:px-4 py-2 text-xs sm:text-sm focus:outline-none focus:ring-1 focus:ring-agora-blue ${
+                    !rtmLoggedIn ? 'opacity-50 cursor-not-allowed' : ''
+                  }`}
+                  value={newMessage}
+                  onChange={(e) => setNewMessage(e.target.value)}
+                  onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
+                />
+                <button 
+                  onClick={handleSendMessage}
+                  disabled={!rtmLoggedIn || !newMessage.trim()}
+                  className={`p-2 bg-agora-blue rounded-xl text-white flex-shrink-0 hover:bg-blue-600 transition-all ${
+                    !rtmLoggedIn || !newMessage.trim() ? 'opacity-50 cursor-not-allowed' : ''
+                  }`}
+                >
+                  <Send size={18} className="sm:w-5 sm:h-5" />
+                </button>
+              </div>
             </div>
-          </div>
+          )}
         </div>
 
         {/* OBS Settings Modal */}

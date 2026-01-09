@@ -103,11 +103,12 @@ class AgoraService {
     // STT (Speech-to-Text) state
     this.sttAgentId = null; // Current STT agent ID
     this.sttConfig = null; // Current STT configuration
-    this.onTranscriptionReceived = null; // Callback: (uid, text, language) => void
+    this.onTranscriptionReceived = null; // Callback: (uid, text, language, isFinal?) => void
     this.onTranslationReceived = null; // Callback: (uid, text, sourceLang, targetLang) => void
     this.sttSubscribedLanguages = new Map(); // uid -> { transcription: string[], translation: Map<sourceLang, targetLang[]> }
     // AI Agent state
     this.currentAgentId = null; // Current AI agent ID
+    this.onTranscriptReceived = null; // Callback: (speaker: 'user' | 'assistant', text: string, isFinal: boolean, timestamp: Date) => void
   }
 
   // Hash username to numeric UID for RTC (RTM can use string, RTC needs number)
@@ -887,14 +888,19 @@ class AgoraService {
             console.log('⚠️ [STT] No language subscription found for UID:', actualUserUid, 'Sending with unknown language for auto-detection');
           }
           
-          console.log('🎤 [STT] Transcription:', text, 'Language:', language, 'User UID:', actualUserUid, 'Has subscription:', !!userSubs);
+          // Check if transcription is final - if all words have isFinal=true, or if the last word has isFinal=true
+          const isFinal = msg.words && msg.words.length > 0 
+            ? (msg.words.every(word => word.isFinal === true) || (msg.words[msg.words.length - 1]?.isFinal === true))
+            : true; // Default to true if no words array
+          
+          console.log('🎤 [STT] Transcription:', text, 'Language:', language, 'User UID:', actualUserUid, 'IsFinal:', isFinal, 'Has subscription:', !!userSubs);
           
           // Always send transcription if user has a subscription (or no subscription means show all)
           // Also send if language matches or if no subscription exists (show all)
           if (!userSubs || userSubs.transcription.length === 0 || userSubs.transcription.includes(language)) {
             if (this.onTranscriptionReceived) {
               console.log('🎤 [STT] Calling onTranscriptionReceived for User UID:', actualUserUid);
-              this.onTranscriptionReceived(actualUserUid, text, language);
+              this.onTranscriptionReceived(actualUserUid, text, language, isFinal);
             } else {
               console.warn('⚠️ [STT] onTranscriptionReceived callback not set');
             }
@@ -902,31 +908,21 @@ class AgoraService {
             console.log('⚠️ [STT] Transcription filtered - User UID:', actualUserUid, 'Language:', language, 'Subscribed languages:', userSubs.transcription);
           }
         } else if (msg.data_type === 'translate' && msg.trans && msg.trans.length) {
-          // Only send translations that match the user's subscription
+          // Get source language from user's subscription (if available)
           const userSubs = this.sttSubscribedLanguages.get(actualUserUid);
           const sourceLang = userSubs && userSubs.transcription.length > 0 
             ? userSubs.transcription[0] 
             : 'unknown';
           
-          // Get subscribed translation languages for this user
-          const subscribedTargetLangs = userSubs && userSubs.translation 
-            ? Array.from(userSubs.translation.values()).flat()
-            : [];
-          
-          // Only send translations that match the user's subscription
+          // Send all translations through - let the UI handle filtering if needed
+          // The subscription controls what languages are requested from STT, not what gets displayed
           for (const trans of msg.trans) {
             const targetLang = trans.lang;
+            const text = trans.texts.join(''); // Join all texts to get complete translation
+            console.log('🌐 [STT] Translation:', text, 'Source:', sourceLang, 'Target:', targetLang, 'User UID:', actualUserUid);
             
-            // Only send if user is subscribed to this target language
-            if (subscribedTargetLangs.length === 0 || subscribedTargetLangs.includes(targetLang)) {
-              const text = trans.texts.join(''); // Join all texts to get complete translation
-              console.log('🌐 [STT] Translation:', text, 'Source:', sourceLang, 'Target:', targetLang, 'User UID:', actualUserUid);
-              
-              if (this.onTranslationReceived) {
-                this.onTranslationReceived(actualUserUid, text, sourceLang, targetLang);
-              }
-            } else {
-              console.log('🌐 [STT] Translation filtered - not subscribed to:', targetLang, 'Subscribed to:', subscribedTargetLangs);
+            if (this.onTranslationReceived) {
+              this.onTranslationReceived(actualUserUid, text, sourceLang, targetLang);
             }
           }
         }
@@ -946,7 +942,29 @@ class AgoraService {
       try {
         const data = JSON.parse(event.message);
         console.log('📨 [RTM] Parsed message data:', data);
-        this.handleRTMMessage(data, event.publisher);
+        // Check if this is a transcript message from AI agent
+        // Format: {object: "user.transcription" | "assistant.transcription", text: string, final: boolean, ...}
+        if (data.object === 'user.transcription' || data.object === 'assistant.transcription') {
+          if (this.onTranscriptReceived) {
+            const speaker = data.object === 'user.transcription' ? 'user' : 'assistant';
+            const text = data.text || '';
+            const isFinal = data.final === true; // Only true when explicitly true
+            this.onTranscriptReceived(speaker, text, isFinal, new Date());
+          }
+          // Don't pass transcript messages to chat - return early
+          return;
+        }
+        // Check if this is a metrics message (ignore these)
+        if (data.object === 'message.metrics') {
+          // Ignore metrics messages
+          return;
+        }
+        // Handle other message types
+        if (data.type) {
+          this.handleRTMMessage(data, event.publisher);
+        } else {
+          if (this.onMessageReceived) this.onMessageReceived(event.message, event.publisher);
+        }
       } catch (e) {
         console.log('📨 [RTM] Non-JSON message, treating as plain text');
         if (this.onMessageReceived) this.onMessageReceived(event.message, event.publisher);
