@@ -365,6 +365,72 @@ export async function POST(request: NextRequest) {
           { status: 500 }
         );
       }
+    } else if (action === 'interrupt') {
+      const { agentId } = body;
+      if (!agentId) {
+        return NextResponse.json(
+          { error: 'agentId is required' },
+          { status: 400 }
+        );
+      }
+
+      const appId = process.env.NEXT_PUBLIC_AGORA_APP_ID;
+      const customerId = process.env.AGORA_CUSTOMER_ID || process.env.AGORA_REST_API_KEY;
+      const customerSecret = process.env.AGORA_CUSTOMER_SECRET || process.env.AGORA_REST_API_SECRET;
+      const baseUrl = process.env.AGORA_BASE_URL || 'https://api.agora.io';
+
+      if (!appId || !customerId || !customerSecret) {
+        console.error('❌ [AI AGENT API] Missing Agora configuration for interrupt');
+        return NextResponse.json(
+          { error: 'Agora configuration missing' },
+          { status: 500 }
+        );
+      }
+
+      const auth = Buffer.from(`${customerId}:${customerSecret}`).toString('base64');
+      const headers = {
+        'Content-Type': 'application/json',
+        'Authorization': `Basic ${auth}`
+      };
+
+      // Call the interrupt endpoint: /api/conversational-ai-agent/v2/projects/{appId}/agents/{agentId}/interrupt
+      const interruptUrl = `${baseUrl}/api/conversational-ai-agent/v2/projects/${appId}/agents/${encodeURIComponent(agentId)}/interrupt`;
+      
+      console.log('⏸️ [AI AGENT API] Interrupting agent:', agentId);
+      console.log('⏸️ [AI AGENT API] Interrupt URL:', interruptUrl);
+      
+      try {
+        const response = await fetch(interruptUrl, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({})
+        });
+
+        const data = await response.json();
+        console.log('⏸️ [AI AGENT API] Interrupt response status:', response.status);
+        console.log('⏸️ [AI AGENT API] Interrupt response data:', data);
+
+        if (!response.ok) {
+          console.error('❌ [AI AGENT API] Failed to interrupt agent:', data);
+          return NextResponse.json(
+            { error: data.message || data.error || 'Failed to interrupt agent' },
+            { status: response.status }
+          );
+        }
+
+        return NextResponse.json({
+          success: true,
+          message: 'Agent interrupted successfully',
+          agentId: agentId,
+          data: data
+        });
+      } catch (error: any) {
+        console.error('❌ [AI AGENT API] Error interrupting agent:', error);
+        return NextResponse.json(
+          { error: error.message || 'Failed to interrupt agent' },
+          { status: 500 }
+        );
+      }
     } else {
       return NextResponse.json(
         { error: 'Unknown action' },

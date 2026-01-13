@@ -959,6 +959,11 @@ class AgoraService {
           // Ignore metrics messages
           return;
         }
+        // Check if this is an interrupt message (ignore these)
+        if (data.object === 'message.interrupt') {
+          // Ignore interrupt messages
+          return;
+        }
         // Handle other message types
         if (data.type) {
           this.handleRTMMessage(data, event.publisher);
@@ -2622,6 +2627,39 @@ class AgoraService {
         this.currentAgentId = null;
       }
       return { success: true }; // Don't throw, just return success
+    }
+  }
+
+  async interruptAiAgent(agentId = null) {
+    const agentToInterrupt = agentId || this.currentAgentId;
+    if (!agentToInterrupt) {
+      console.warn('⚠️ [AI AGENT] No agent to interrupt');
+      throw new Error('No agent to interrupt');
+    }
+
+    try {
+      console.log(`⏸️ [AI AGENT] Attempting to interrupt agent: ${agentToInterrupt}`);
+      
+      const url = `/api/agora-agents`;
+      const body = {
+        action: 'interrupt',
+        agentId: agentToInterrupt
+      };
+
+      const response = await axios.post(url, body);
+      
+      if (response.status !== 200) {
+        const errorData = response.data;
+        console.error('❌ [AI AGENT] Agent interrupt API failed:', errorData?.error || 'Failed to interrupt agent');
+        throw new Error(errorData?.error || 'Failed to interrupt agent');
+      } else {
+        const data = response.data;
+        console.log('✅ [AI AGENT] Agora agent interrupted:', data);
+        return { success: true, data };
+      }
+    } catch (err) {
+      console.error('❌ [AI AGENT] Error interrupting Agora agent:', err.message);
+      throw err;
     }
   }
 

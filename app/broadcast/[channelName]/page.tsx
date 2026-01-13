@@ -5,7 +5,7 @@ import { useParams, useSearchParams, useRouter } from 'next/navigation';
 import { 
   Mic, MicOff, Video, VideoOff, ScreenShare, PhoneOff, 
   Users, Settings, Send, Rocket, Download, Server, Bot, Play, Pause,
-  Check, X, RefreshCw, Upload, Clock, Copy, HelpCircle, User, BarChart3, Circle, MoreVertical, Image, Palette, Sparkles, Languages, MessageSquare, FileText, Filter
+  Check, X, RefreshCw, Upload, Clock, Copy, HelpCircle, User, BarChart3, Circle, MoreVertical, Image, Palette, Sparkles, Languages, MessageSquare, FileText, Filter, Square
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import agoraService from '../../../src/services/agoraService';
@@ -2891,6 +2891,22 @@ function BroadcastPageContent() {
     }
   };
 
+  const handleInterruptAgent = async () => {
+    if (!agoraService.currentAgentId) {
+      toast.error('No active AI agent to interrupt');
+      return;
+    }
+
+    try {
+      toast.loading('Interrupting AI Agent...', { id: 'ai-interrupt' });
+      await agoraService.interruptAiAgent();
+      toast.success('AI Agent interrupted', { id: 'ai-interrupt' });
+    } catch (err: any) {
+      console.error('Error interrupting AI Agent:', err);
+      toast.error(err.message || 'Failed to interrupt AI Agent', { id: 'ai-interrupt' });
+    }
+  };
+
   // STT Handlers
   const handleStartSTT = async () => {
     try {
@@ -3336,6 +3352,15 @@ function BroadcastPageContent() {
                 <span className="font-medium hidden sm:inline">AI Agent {isAiMode ? 'ON' : 'OFF'}</span>
                 <span className="font-medium sm:hidden">{isAiMode ? 'AI ON' : 'AI OFF'}</span>
               </button>
+              {isAiMode && (
+                <button 
+                  onClick={handleInterruptAgent}
+                  className="flex items-center space-x-1 sm:space-x-2 px-2 sm:px-3 lg:px-4 py-1.5 sm:py-2 rounded-lg transition-all text-xs sm:text-sm bg-red-600 text-white hover:bg-red-700 font-medium"
+                >
+                  <span className="font-medium hidden sm:inline">Interrupt</span>
+                  <span className="font-medium sm:hidden">Interrupt</span>
+                </button>
+              )}
               {isBroadcasting && (
                 <button 
                   onClick={handleEndShow}
