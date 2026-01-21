@@ -98,6 +98,8 @@ class AgoraService {
     this.onOBSConnectionClosed = null; // Callback when connection closes
     this.onOBSStreamStateChanged = null; // Callback when stream state changes
     this.onKicked = null; // Callback when user is kicked/banned from channel
+    this.aiVoiceEnabled = true; // AI voice on/off toggle (default: on)
+    this.aiAgentAudioTrack = null; // Reference to AI agent audio track for controlling playback
     this.videoQuality = '720p'; // Video quality setting: '480p', '720p', '1080p'
     this.audioQuality = '48kHz'; // Audio quality setting: '16kHz', '24kHz', '48kHz'
     // STT (Speech-to-Text) state
@@ -658,64 +660,80 @@ class AgoraService {
           // For Conversational AI agent (UID 8888), ensure audio plays for all users
           const AGENT_UID = 8888;
           if (user.uid === AGENT_UID && user.audioTrack) {
-            // Function to attempt playing the audio track
-            const playAudioTrack = async (track, retryCount = 0) => {
-              try {
-                // Set volume to ensure it's audible
-                if (track.setVolume) {
-                  track.setVolume(100);
-                }
-                
-                // Try to play the audio track
-                const playPromise = track.play();
-                
-                // play() may return a promise or undefined
-                if (playPromise && typeof playPromise.then === 'function') {
-                  await playPromise;
-                  console.log('✅ [RTC] AI agent audio track playing successfully for UID:', user.uid);
-                } else if (playPromise && typeof playPromise.catch === 'function') {
-                  playPromise.catch(async (err) => {
-                    console.warn('⚠️ [RTC] Failed to play AI agent audio track (attempt ' + (retryCount + 1) + '):', err);
-                    // Retry after a short delay if we haven't tried too many times
-                    if (retryCount < 3) {
-                      setTimeout(() => {
-                        playAudioTrack(track, retryCount + 1);
-                      }, 500);
-                    } else {
-                      console.error('❌ [RTC] Failed to play AI agent audio track after retries:', err);
-                    }
-                  });
-                } else {
-                  // No promise returned, might be playing or might need retry
-                  console.log('🔊 [RTC] AI agent audio track play() called for UID:', user.uid);
-                  // Check if it's actually playing after a short delay
-                  setTimeout(() => {
-                    if (track && track.getMediaStreamTrack) {
-                      const mediaTrack = track.getMediaStreamTrack();
-                      if (mediaTrack && mediaTrack.readyState === 'ended') {
-                        console.warn('⚠️ [RTC] AI agent audio track ended, retrying...');
-                        if (retryCount < 3) {
+            // Store reference to AI agent audio track for potential stopping
+            this.aiAgentAudioTrack = user.audioTrack;
+            
+            // Only play audio if AI voice is enabled
+            if (this.aiVoiceEnabled) {
+              // Function to attempt playing the audio track
+              const playAudioTrack = async (track, retryCount = 0) => {
+                try {
+                  // Check if voice is still enabled before playing
+                  if (!this.aiVoiceEnabled) {
+                    console.log('🔇 [RTC] AI voice disabled, skipping audio playback');
+                    return;
+                  }
+                  
+                  // Set volume to ensure it's audible
+                  if (track.setVolume) {
+                    track.setVolume(100);
+                  }
+                  
+                  // Try to play the audio track
+                  const playPromise = track.play();
+                  
+                  // play() may return a promise or undefined
+                  if (playPromise && typeof playPromise.then === 'function') {
+                    await playPromise;
+                    console.log('✅ [RTC] AI agent audio track playing successfully for UID:', user.uid);
+                  } else if (playPromise && typeof playPromise.catch === 'function') {
+                    playPromise.catch(async (err) => {
+                      console.warn('⚠️ [RTC] Failed to play AI agent audio track (attempt ' + (retryCount + 1) + '):', err);
+                      // Retry after a short delay if we haven't tried too many times
+                      if (retryCount < 3 && this.aiVoiceEnabled) {
+                        setTimeout(() => {
                           playAudioTrack(track, retryCount + 1);
+                        }, 500);
+                      } else {
+                        console.error('❌ [RTC] Failed to play AI agent audio track after retries:', err);
+                      }
+                    });
+                  } else {
+                    // No promise returned, might be playing or might need retry
+                    console.log('🔊 [RTC] AI agent audio track play() called for UID:', user.uid);
+                    // Check if it's actually playing after a short delay
+                    setTimeout(() => {
+                      if (track && track.getMediaStreamTrack && this.aiVoiceEnabled) {
+                        const mediaTrack = track.getMediaStreamTrack();
+                        if (mediaTrack && mediaTrack.readyState === 'ended') {
+                          console.warn('⚠️ [RTC] AI agent audio track ended, retrying...');
+                          if (retryCount < 3) {
+                            playAudioTrack(track, retryCount + 1);
+                          }
                         }
                       }
-                    }
-                  }, 1000);
+                    }, 1000);
+                  }
+                } catch (err) {
+                  console.error('❌ [RTC] Error calling play() on AI agent audio track:', err);
+                  // Retry after a short delay
+                  if (retryCount < 3 && this.aiVoiceEnabled) {
+                    setTimeout(() => {
+                      playAudioTrack(track, retryCount + 1);
+                    }, 500);
+                  }
                 }
-              } catch (err) {
-                console.error('❌ [RTC] Error calling play() on AI agent audio track:', err);
-                // Retry after a short delay
-                if (retryCount < 3) {
-                  setTimeout(() => {
-                    playAudioTrack(track, retryCount + 1);
-                  }, 500);
+              };
+              
+              // Start playing with a small delay to ensure track is ready
+              setTimeout(() => {
+                if (this.aiVoiceEnabled) {
+                  playAudioTrack(user.audioTrack);
                 }
-              }
-            };
-            
-            // Start playing with a small delay to ensure track is ready
-            setTimeout(() => {
-              playAudioTrack(user.audioTrack);
-            }, 100);
+              }, 100);
+            } else {
+              console.log('🔇 [RTC] AI voice disabled, not playing AI agent audio track');
+            }
           } else if (user.audioTrack) {
             // For other users, play audio normally
             try {
@@ -750,6 +768,14 @@ class AgoraService {
         
         // Update Media Push layouts when user leaves
         this.updateAllMediaPushLayouts();
+      }
+      if (mediaType === 'audio') {
+        // Clear AI agent audio track reference if this is the AI agent
+        const AGENT_UID = 8888;
+        if (user.uid === AGENT_UID) {
+          this.aiAgentAudioTrack = null;
+          console.log('🔇 [RTC] Cleared AI agent audio track reference');
+        }
       }
       if (this.onTrackUnpublished) this.onTrackUnpublished(user, mediaType);
     });
@@ -2627,6 +2653,38 @@ class AgoraService {
         this.currentAgentId = null;
       }
       return { success: true }; // Don't throw, just return success
+    }
+  }
+
+  setAiVoiceEnabled(enabled) {
+    this.aiVoiceEnabled = enabled;
+    console.log(`🔊 [AI AGENT] AI voice ${enabled ? 'enabled' : 'disabled'}`);
+    
+    // If voice is disabled and audio track is playing, stop it
+    if (!enabled && this.aiAgentAudioTrack) {
+      try {
+        this.aiAgentAudioTrack.stop();
+        console.log('🔇 [AI AGENT] Stopped AI agent audio track');
+      } catch (err) {
+        console.error('❌ [AI AGENT] Error stopping audio track:', err);
+      }
+    }
+    // If voice is enabled and audio track exists, try to play it
+    else if (enabled && this.aiAgentAudioTrack) {
+      try {
+        // Check if track is still valid
+        if (this.aiAgentAudioTrack.getMediaStreamTrack) {
+          const mediaTrack = this.aiAgentAudioTrack.getMediaStreamTrack();
+          if (mediaTrack && mediaTrack.readyState !== 'ended') {
+            this.aiAgentAudioTrack.play().catch(err => {
+              console.error('❌ [AI AGENT] Error playing audio track after enabling:', err);
+            });
+            console.log('🔊 [AI AGENT] Resumed AI agent audio track');
+          }
+        }
+      } catch (err) {
+        console.error('❌ [AI AGENT] Error resuming audio track:', err);
+      }
     }
   }
 

@@ -75,6 +75,7 @@ function BroadcastPageContent() {
     autoStartBroadcast: false
   });
   const [isAiMode, setIsAiMode] = useState(false);
+  const [aiVoiceEnabled, setAiVoiceEnabled] = useState(true); // AI voice on/off toggle
   const [isScreenSharing, setIsScreenSharing] = useState(false);
   const [screenShareSupported, setScreenShareSupported] = useState(false);
   const [mediaPullState, setMediaPullState] = useState({
@@ -387,6 +388,55 @@ function BroadcastPageContent() {
       }
     };
   }, [activeTab, chatSubTab]);
+
+  // Sync AI assistant messages from transcript entries to chat
+  useEffect(() => {
+    // Get all final assistant messages from AI agent
+    const aiAssistantEntries = transcriptEntries.filter(
+      entry => entry.source === 'ai-agent' && 
+               entry.speaker === 'assistant' && 
+               entry.isFinal && 
+               entry.text.trim()
+    );
+    
+    // Update chat messages to include these AI assistant messages
+    setChatMessages(prev => {
+      const newMessages: any[] = [];
+      const existingAIMessages = new Set(
+        prev.filter(msg => msg.isAI).map(msg => msg.content)
+      );
+      
+      // Add all AI assistant entries that aren't already in chat
+      aiAssistantEntries.forEach(entry => {
+        const trimmedText = entry.text.trim();
+        if (!existingAIMessages.has(trimmedText)) {
+          newMessages.push({
+            senderId: 'AI Assistant',
+            content: trimmedText,
+            timestamp: entry.timestamp,
+            isAI: true,
+            wasSpoken: aiVoiceEnabled // Use current voice state
+          });
+          existingAIMessages.add(trimmedText);
+        }
+      });
+      
+      // If no new messages, return previous state
+      if (newMessages.length === 0) return prev;
+      
+      // Merge with existing messages, keeping order
+      const nonAIMessages = prev.filter(msg => !msg.isAI);
+      const existingAIMessagesList = prev.filter(msg => msg.isAI);
+      
+      // Combine all AI messages (existing + new) and sort by timestamp
+      const allAIMessages = [...existingAIMessagesList, ...newMessages].sort(
+        (a, b) => a.timestamp.getTime() - b.timestamp.getTime()
+      );
+      
+      // Return non-AI messages + sorted AI messages
+      return [...nonAIMessages, ...allAIMessages];
+    });
+  }, [transcriptEntries, aiVoiceEnabled]);
 
   // Virtual Background State
   const [showVirtualBgModal, setShowVirtualBgModal] = useState(false);
@@ -707,6 +757,28 @@ function BroadcastPageContent() {
           }
         });
         
+        // Always add assistant messages to chat immediately when they become final
+        if (speaker === 'assistant' && isFinal && text.trim()) {
+          setChatMessages(prev => {
+            const trimmedText = text.trim();
+            // Check if this exact message was already added to avoid duplicates
+            const recentMessages = prev.slice(-20); // Check last 20 messages
+            const isDuplicate = recentMessages.some(
+              msg => msg.isAI && msg.content === trimmedText
+            );
+            if (isDuplicate) {
+              return prev; // Already added
+            }
+            return [...prev, { 
+              senderId: 'AI Assistant', 
+              content: trimmedText, 
+              timestamp: timestamp,
+              isAI: true,
+              wasSpoken: aiVoiceEnabled // Indicates if this was spoken (voice on) or text-only (voice off)
+            }];
+          });
+        }
+        
         // For assistant messages that are non-final, set a timeout to mark them as final if they stop updating
         // This handles cases where assistant messages might not get a final flag from the AI agent
         if (!isFinal && speaker === 'assistant') {
@@ -722,7 +794,28 @@ function BroadcastPageContent() {
                     e.text === text.trim() &&
                     timestamp.getTime() - e.timestamp.getTime() < 100) {
                   // Mark as final if it's been 3 seconds and hasn't been updated
-                  return { ...e, isFinal: true };
+                  const finalEntry = { ...e, isFinal: true };
+                  
+                  // Also add to chat when we mark it as final
+                  setChatMessages(prevChat => {
+                    const trimmedText = e.text.trim();
+                    const recentMessages = prevChat.slice(-20);
+                    const isDuplicate = recentMessages.some(
+                      msg => msg.isAI && msg.content === trimmedText
+                    );
+                    if (isDuplicate) {
+                      return prevChat;
+                    }
+                    return [...prevChat, { 
+                      senderId: 'AI Assistant', 
+                      content: trimmedText, 
+                      timestamp: e.timestamp,
+                      isAI: true,
+                      wasSpoken: aiVoiceEnabled
+                    }];
+                  });
+                  
+                  return finalEntry;
                 }
                 return e;
               });
@@ -3353,13 +3446,30 @@ function BroadcastPageContent() {
                 <span className="font-medium sm:hidden">{isAiMode ? 'AI ON' : 'AI OFF'}</span>
               </button>
               {isAiMode && (
-                <button 
-                  onClick={handleInterruptAgent}
-                  className="flex items-center space-x-1 sm:space-x-2 px-2 sm:px-3 lg:px-4 py-1.5 sm:py-2 rounded-lg transition-all text-xs sm:text-sm bg-red-600 text-white hover:bg-red-700 font-medium"
-                >
-                  <span className="font-medium hidden sm:inline">Interrupt</span>
-                  <span className="font-medium sm:hidden">Interrupt</span>
-                </button>
+                <>
+                  <button 
+                    onClick={() => {
+                      const newState = !aiVoiceEnabled;
+                      setAiVoiceEnabled(newState);
+                      agoraService.setAiVoiceEnabled(newState);
+                    }}
+                    className={`flex items-center space-x-1 sm:space-x-2 px-2 sm:px-3 lg:px-4 py-1.5 sm:py-2 rounded-lg transition-all text-xs sm:text-sm ${
+                      aiVoiceEnabled ? 'bg-green-600 text-white hover:bg-green-700' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                    }`}
+                    title={aiVoiceEnabled ? 'AI Voice ON - Click to turn off' : 'AI Voice OFF - Click to turn on'}
+                  >
+                    <Mic size={14} className={`sm:w-4 sm:h-4 lg:w-[18px] lg:h-[18px] ${!aiVoiceEnabled ? 'line-through' : ''}`} />
+                    <span className="font-medium hidden sm:inline">Voice {aiVoiceEnabled ? 'ON' : 'OFF'}</span>
+                    <span className="font-medium sm:hidden">{aiVoiceEnabled ? 'Voice' : 'Text'}</span>
+                  </button>
+                  <button 
+                    onClick={handleInterruptAgent}
+                    className="flex items-center space-x-1 sm:space-x-2 px-2 sm:px-3 lg:px-4 py-1.5 sm:py-2 rounded-lg transition-all text-xs sm:text-sm bg-red-600 text-white hover:bg-red-700 font-medium"
+                  >
+                    <span className="font-medium hidden sm:inline">Interrupt</span>
+                    <span className="font-medium sm:hidden">Interrupt</span>
+                  </button>
+                </>
               )}
               {isBroadcasting && (
                 <button 
@@ -4218,11 +4328,27 @@ function BroadcastPageContent() {
                       {chatMessages.map((msg, i) => (
                         <div key={i} className={`flex flex-col ${msg.senderId === 'You' ? 'items-end' : 'items-start'}`}>
                           {!msg.isSystem && (
-                            <span className="text-xs text-gray-500 mb-1">{msg.senderId}</span>
+                            <div className="flex items-center gap-2 mb-1">
+                              <span className={`text-xs ${msg.isAI ? 'text-purple-400 font-semibold' : 'text-gray-500'}`}>
+                                {msg.senderId}
+                              </span>
+                              {msg.isAI && (
+                                <div className="flex items-center gap-1" title={msg.wasSpoken ? "Spoken" : "Text only"}>
+                                  <Bot size={12} className="text-purple-400" />
+                                  {msg.wasSpoken ? (
+                                    <Mic size={10} className="text-green-400" />
+                                  ) : (
+                                    <span className="text-[10px] text-gray-500" title="Text only">📝</span>
+                                  )}
+                                </div>
+                              )}
+                            </div>
                           )}
                           <div className={`px-4 py-2 rounded-2xl max-w-[80%] ${
                             msg.isSystem
                               ? 'bg-gray-800/50 text-gray-400 italic border border-gray-700/50'
+                              : msg.isAI
+                              ? 'bg-gradient-to-r from-purple-600/90 to-blue-600/90 text-white border border-purple-400/50 shadow-lg shadow-purple-500/20'
                               : msg.senderId === 'You' 
                               ? 'bg-agora-blue text-white' 
                               : 'bg-gray-800 text-gray-300'
