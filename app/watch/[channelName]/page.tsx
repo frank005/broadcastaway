@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback, useRef, Suspense } from 'react';
 import { useParams, useSearchParams, useRouter } from 'next/navigation';
 import { 
   Mic, MicOff, Video, VideoOff, PhoneOff, 
-  Users, MessageSquare, Send, Rocket, Hand, BarChart3, PictureInPicture, Circle, Image, Palette, Sparkles, X, Check, Play, Languages, Filter, Download, FileText
+  Users, MessageSquare, Send, Rocket, Hand, BarChart3, PictureInPicture, Circle, Image, Palette, Sparkles, X, Check, Play, Languages, Filter, Download, FileText, Bot
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import agoraService from '../../../src/services/agoraService';
@@ -158,7 +158,7 @@ function AudiencePageContent() {
     container.addEventListener('scroll', handleScroll, { passive: true });
     return () => container.removeEventListener('scroll', handleScroll);
   }, []);
-  
+
   // STT State (for audience)
   const [sttTranscriptions, setSttTranscriptions] = useState<Map<number, { text: string; language: string; timestamp: Date }>>(new Map());
   // Store translations per user - key is uid, value is map of targetLang -> translation
@@ -191,6 +191,55 @@ function AudiencePageContent() {
     language: 'all',
     type: 'all'
   });
+
+  // Sync AI assistant messages from transcript entries to chat
+  useEffect(() => {
+    // Get all final assistant messages from AI agent
+    const aiAssistantEntries = transcriptEntries.filter(
+      entry => entry.source === 'ai-agent' && 
+               entry.speaker === 'assistant' && 
+               entry.isFinal && 
+               entry.text.trim()
+    );
+    
+    // Update chat messages to include these AI assistant messages
+    setChatMessages(prev => {
+      const newMessages: any[] = [];
+      const existingAIMessages = new Set(
+        prev.filter(msg => msg.isAI).map(msg => msg.content)
+      );
+      
+      // Add all AI assistant entries that aren't already in chat
+      aiAssistantEntries.forEach(entry => {
+        const trimmedText = entry.text.trim();
+        if (!existingAIMessages.has(trimmedText)) {
+          newMessages.push({
+            senderId: 'AI Assistant',
+            content: trimmedText,
+            timestamp: entry.timestamp,
+            isAI: true,
+            wasSpoken: true // Audience always hears voice
+          });
+          existingAIMessages.add(trimmedText);
+        }
+      });
+      
+      // If no new messages, return previous state
+      if (newMessages.length === 0) return prev;
+      
+      // Merge with existing messages, keeping order
+      const nonAIMessages = prev.filter(msg => !msg.isAI);
+      const existingAIMessagesList = prev.filter(msg => msg.isAI);
+      
+      // Combine all AI messages (existing + new) and sort by timestamp
+      const allAIMessages = [...existingAIMessagesList, ...newMessages].sort(
+        (a, b) => a.timestamp.getTime() - b.timestamp.getTime()
+      );
+      
+      // Return non-AI messages + sorted AI messages
+      return [...nonAIMessages, ...allAIMessages];
+    });
+  }, [transcriptEntries]);
   const [chatSubTab, setChatSubTab] = useState<'chat' | 'transcript'>('chat'); // Sub-tab for Chat section
   
   // Virtual Background State
@@ -533,15 +582,64 @@ function AudiencePageContent() {
           }
         });
 
+        // Always add assistant messages to chat immediately when they become final
+        if (speaker === 'assistant' && isFinal && text.trim()) {
+          setChatMessages(prev => {
+            const trimmedText = text.trim();
+            // Check if this exact message was already added to avoid duplicates
+            const recentMessages = prev.slice(-20); // Check last 20 messages
+            const isDuplicate = recentMessages.some(
+              msg => msg.isAI && msg.content === trimmedText
+            );
+            if (isDuplicate) {
+              return prev; // Already added
+            }
+            return [...prev, { 
+              senderId: 'AI Assistant', 
+              content: trimmedText, 
+              timestamp: timestamp,
+              isAI: true,
+              wasSpoken: true // Audience always hears voice (they can't control it)
+            }];
+          });
+        }
+
         // For assistant messages that are non-final, set a timeout to mark them as final if they stop updating
         if (!isFinal && speaker === 'assistant') {
           setTimeout(() => {
+            if (!isMounted.current) return;
             setTranscriptEntries(prev => {
-              return prev.map(entry =>
-                entry.id === `ai-${speaker}-${timestamp.getTime()}-${Math.random()}` && !entry.isFinal
-                  ? { ...entry, isFinal: true }
-                  : entry
-              );
+              return prev.map(entry => {
+                if (entry.source === 'ai-agent' && 
+                    entry.speaker === 'assistant' && 
+                    !entry.isFinal && 
+                    entry.text === text.trim() &&
+                    timestamp.getTime() - entry.timestamp.getTime() < 100) {
+                  const finalEntry = { ...entry, isFinal: true };
+                  
+                  // Also add to chat when we mark it as final
+                  setChatMessages(prevChat => {
+                    const trimmedText = entry.text.trim();
+                    const recentMessages = prevChat.slice(-20);
+                    const isDuplicate = recentMessages.some(
+                      msg => msg.isAI && msg.content === trimmedText
+                    );
+                    if (isDuplicate) {
+                      return prevChat;
+                    }
+                    return [...prevChat, { 
+                      senderId: 'AI Assistant', 
+                      content: trimmedText, 
+                      timestamp: entry.timestamp,
+                      isAI: true,
+                      wasSpoken: true
+                    }];
+                  });
+                  
+                  return finalEntry;
+                }
+                return entry;
+              });
             });
           }, 3000); // Mark as final after 3 seconds if no updates
         }
@@ -2418,14 +2516,24 @@ function AudiencePageContent() {
               <div key={i} className={`flex flex-col ${msg.senderId === 'You' ? 'items-end' : 'items-start'}`}>
                 {!msg.isSystem && (
                   <div className="flex items-center space-x-2 mb-1">
-                    <span className={`text-[10px] font-bold uppercase ${msg.senderId === 'You' ? 'text-agora-blue' : 'text-gray-500'}`}>
+                    <span className={`text-[10px] font-bold uppercase ${msg.isAI ? 'text-purple-400' : msg.senderId === 'You' ? 'text-agora-blue' : 'text-gray-500'}`}>
                       {msg.senderId}
                     </span>
+                    {msg.isAI && (
+                      <div className="flex items-center gap-1" title={msg.wasSpoken ? "Spoken" : "Text only"}>
+                        <Bot size={12} className="text-purple-400" />
+                        {msg.wasSpoken && (
+                          <Mic size={10} className="text-green-400" />
+                        )}
+                      </div>
+                    )}
                   </div>
                 )}
                 <div className={`px-4 py-2.5 rounded-2xl max-w-[90%] text-sm shadow-sm ${
                   msg.isSystem
                     ? 'bg-gray-800/50 text-gray-400 italic border border-gray-700/50'
+                    : msg.isAI
+                    ? 'bg-gradient-to-r from-purple-600/90 to-blue-600/90 text-white border border-purple-400/50 shadow-lg shadow-purple-500/20 rounded-tl-none'
                     : msg.senderId === 'You' 
                     ? 'bg-agora-blue text-white rounded-tr-none' 
                     : 'bg-gray-800 text-gray-200 rounded-tl-none border border-gray-700'
