@@ -69,9 +69,17 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      if (!openaiKey) {
+      // Resolve preset configuration
+      const asrPreset = process.env.ASR_PRESET || '';
+      const llmPreset = process.env.LLM_PRESET || '';
+      const ttsPreset = process.env.TTS_PRESET || '';
+      const activePresets = [asrPreset, llmPreset, ttsPreset].filter(Boolean);
+      const presetString = activePresets.join(',');
+
+      // OpenAI key is only required when no LLM preset is set
+      if (!llmPreset && !openaiKey) {
         return NextResponse.json(
-          { error: 'OpenAI API key not set' },
+          { error: 'OPENAI_API_KEY required when LLM_PRESET is not set' },
           { status: 500 }
         );
       }
@@ -198,9 +206,88 @@ export async function POST(request: NextRequest) {
         content: systemPrompt
       });
 
+      const asrLanguage = process.env.ASR_LANGUAGE || process.env.AGORA_ASR_LANGUAGE || 'en-US';
+      const llmMaxHistory = parseInt(process.env.LLM_MAX_HISTORY || process.env.AI_AGENT_MAX_HISTORY || '10');
+      const llmTemperature = parseFloat(process.env.LLM_TEMPERATURE || process.env.OPENAI_TEMPERATURE || '0.7');
+      const llmMaxTokens = parseInt(process.env.LLM_MAX_TOKENS || process.env.OPENAI_MAX_TOKENS || '500');
+
+      // ASR config
+      let asrConfig: any;
+      if (asrPreset) {
+        const asrVendor = asrPreset.startsWith('deepgram_') ? 'deepgram' : 'ares';
+        asrConfig = { vendor: asrVendor, language: asrLanguage };
+      } else {
+        asrConfig = { vendor: process.env.ASR_VENDOR || 'ares', language: asrLanguage };
+      }
+
+      // LLM config
+      let llmConfig: any;
+      if (llmPreset) {
+        llmConfig = {
+          vendor: 'openai',
+          system_messages: systemMessages,
+          greeting_message: process.env.AI_AGENT_GREETING_MESSAGE || '',
+          failure_message: process.env.AI_AGENT_FAILURE_MESSAGE || "I'm having trouble processing that. Could you please rephrase?",
+          max_history: llmMaxHistory,
+          input_modalities: ['text'],
+          output_modalities: ['text'],
+          params: { temperature: llmTemperature, max_tokens: llmMaxTokens },
+        };
+      } else {
+        llmConfig = {
+          url: process.env.OPENAI_API_URL || 'https://api.openai.com/v1/chat/completions',
+          api_key: openaiKey,
+          system_messages: systemMessages,
+          greeting_message: process.env.AI_AGENT_GREETING_MESSAGE || '',
+          failure_message: process.env.AI_AGENT_FAILURE_MESSAGE || "I'm having trouble processing that. Could you please rephrase?",
+          max_history: llmMaxHistory,
+          input_modalities: ['text'],
+          output_modalities: ['text'],
+          params: {
+            model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
+            temperature: llmTemperature,
+            max_tokens: llmMaxTokens,
+          },
+        };
+      }
+
+      // TTS config
+      let ttsConfig: any;
+      if (ttsPreset) {
+        const ttsVendor = ttsPreset.startsWith('minimax_speech_') ? 'minimax' : 'openai';
+        const ttsParams: any = {};
+        if (ttsPreset.startsWith('minimax_speech_')) {
+          const voiceId = process.env.TTS_MINIMAX_VOICE_ID || '';
+          const sampleRate = parseInt(process.env.TTS_MINIMAX_SAMPLE_RATE || '32000');
+          if (voiceId) ttsParams.voice_setting = { voice_id: voiceId };
+          ttsParams.audio_setting = { sample_rate: sampleRate };
+        } else {
+          ttsParams.voice = process.env.TTS_OPENAI_VOICE || 'alloy';
+          ttsParams.speed = parseFloat(process.env.TTS_OPENAI_SPEED || '1.0');
+        }
+        ttsConfig = {
+          vendor: ttsVendor,
+          skip_patterns: [3, 4],
+          ...(Object.keys(ttsParams).length > 0 ? { params: ttsParams } : {}),
+        };
+      } else {
+        ttsConfig = {
+          vendor: 'microsoft',
+          skip_patterns: [3, 4],
+          params: {
+            key: process.env.MICROSOFT_TTS_API_KEY || '',
+            region: process.env.MICROSOFT_TTS_REGION || 'eastus',
+            voice_name: process.env.MICROSOFT_TTS_VOICE || 'en-US-EvelynMultilingualNeural',
+            sample_rate: 24000,
+            speed: parseFloat(process.env.MICROSOFT_TTS_SPEED || '1.3'),
+          },
+        };
+      }
+
       // Generate agent configuration with required payload parameters (matching working structure)
-      const agentConfig = {
+      const agentConfig: any = {
         name: `broadcastaway_agent_${Date.now()}`,
+        ...(presetString ? { preset: presetString } : {}),
         properties: {
           channel: channelName,
           token: agentToken, // Combined RTC+RTM token for agent
@@ -211,49 +298,24 @@ export async function POST(request: NextRequest) {
           agent_rtm_uid: agentRtmUid, // Format: "{hostName}_AI"
           advanced_features: {
             enable_rtm: true, // Required: enable RTM for data channel
-            enable_aivad: false // no TTS so latency doesn't matter
+            enable_aivad: false
           },
-          asr: {
-            vendor: "ares",
-            language: "en-US"
-          },
+          asr: asrConfig,
           turn_detection: {
             interrupt_mode: "append",
           },
           parameters: {
             audio_scenario: "chorus",
-            data_channel: "rtm", // Required: specifies RTM as data channel
-            enable_metrics: true, // Better to have true
+            data_channel: "rtm",
+            enable_metrics: true,
             enable_error_message: true,
             transcript: {
-              enable: true, // Critical: explicitly enables transcripts
+              enable: true,
               redundant: false
             }
           },
-          llm: {
-            url: process.env.OPENAI_API_URL || 'https://api.openai.com/v1/chat/completions',
-            api_key: openaiKey,
-            system_messages: systemMessages,
-            greeting_message: process.env.AI_AGENT_GREETING_MESSAGE || "",
-            failure_message: process.env.AI_AGENT_FAILURE_MESSAGE || "I'm having trouble processing that. Could you please rephrase?",
-            max_history: parseInt(process.env.AI_AGENT_MAX_HISTORY || '10'),
-            input_modalities: ["text"], // Critical: enables text input
-            output_modalities: ["text"], // Critical: enables text output
-            params: {
-              model: process.env.OPENAI_MODEL || "gpt-4o-mini"
-            }
-          },
-          tts: {
-            vendor: 'microsoft',
-            skip_patterns: [3, 4], // You need to use the Agora skip_patterns codes 4 for []
-            params: {
-              key: process.env.MICROSOFT_TTS_API_KEY || '',
-              region: process.env.MICROSOFT_TTS_REGION || 'eastus',
-              voice_name: 'en-US-EvelynMultilingualNeural',
-              sample_rate: 24000,
-              speed: 1.3
-            }
-          }
+          llm: llmConfig,
+          tts: ttsConfig
         }
       };
 
