@@ -4,6 +4,29 @@ A high-performance live broadcasting app built with Next.js, featuring AI shoppi
 
 A high-performance live broadcasting app inspired by Whatnot, built with Agora's Real-Time Communication platform. This demo combines live video streaming, AI shopping agents, host-promotion system, and advanced media services into a single, powerful application.
 
+---
+
+## 🆕 Recent Changes
+
+### Agora Presets (ASR, LLM, TTS)
+The AI agent now supports **Agora-managed presets** so you no longer need vendor API keys. Set any of the following env vars to use presets:
+- `ASR_PRESET` — `deepgram_nova_2`, `deepgram_nova_3` (or leave blank for `ares`/key mode)
+- `LLM_PRESET` — `openai_gpt_4o_mini`, `openai_gpt_4_1_mini`, `openai_gpt_5_nano`, `openai_gpt_5_mini`
+- `TTS_PRESET` — `minimax_speech_2_6_turbo`, `minimax_speech_2_8_turbo`, `openai_tts_1`
+
+When a preset is set, the corresponding API key (`OPENAI_API_KEY`, `MICROSOFT_TTS_API_KEY`) is **not** needed. Leaving a preset blank falls back to the original env-var key mode.
+
+Vendor-specific preset params:
+- MiniMax: `TTS_MINIMAX_VOICE_ID`, `TTS_MINIMAX_SAMPLE_RATE`
+- OpenAI TTS: `TTS_OPENAI_VOICE`, `TTS_OPENAI_SPEED`
+- LLM: `LLM_TEMPERATURE`, `LLM_MAX_TOKENS`, `LLM_MAX_HISTORY` (apply in both preset and key mode; fall back to `OPENAI_TEMPERATURE` / `OPENAI_MAX_TOKENS` / `AI_AGENT_MAX_HISTORY` if not set)
+
+### Agent Token
+The AI Agent now joins the channel with a generated RTC+RTM token (when `AGORA_APP_CERTIFICATE` is set), matching the existing client-side token flow. If no certificate is configured, the agent falls back to tokenless mode.
+
+---
+
+
 ## Features
 
 ### 🎬 Core Broadcasting
