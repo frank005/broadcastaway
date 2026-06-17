@@ -1441,6 +1441,7 @@ class AgoraService {
         headers: {
           'Content-Type': 'application/json',
         },
+        credentials: 'include',
         body: JSON.stringify({
           channelName,
           uid,
@@ -2569,7 +2570,7 @@ class AgoraService {
     console.log('🤖 [AI AGENT] Request body:', JSON.stringify({ ...body, prompt: prompt?.substring(0, 100) + '...' }, null, 2));
     
     try {
-      const response = await axios.post(url, body);
+      const response = await axios.post(url, body, { withCredentials: true });
       console.log('✅ [AI AGENT] Response status:', response.status);
       console.log('✅ [AI AGENT] Response data:', JSON.stringify(response.data, null, 2));
       
@@ -2629,7 +2630,7 @@ class AgoraService {
         agentId: agentToStop
       };
 
-      const response = await axios.post(url, body);
+      const response = await axios.post(url, body, { withCredentials: true });
       
       if (response.status !== 200) {
         const errorData = response.data;
@@ -2704,7 +2705,7 @@ class AgoraService {
         agentId: agentToInterrupt
       };
 
-      const response = await axios.post(url, body);
+      const response = await axios.post(url, body, { withCredentials: true });
       
       if (response.status !== 200) {
         const errorData = response.data;

@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import { Toaster } from 'react-hot-toast'
 import Navigation from './components/Navigation'
+import Providers from './providers'
 import './globals.css'
 
 export const metadata: Metadata = {
@@ -28,11 +29,13 @@ export default function RootLayout({
         <script src="/proto/index.js"></script>
       </head>
       <body className="min-h-screen bg-agora-light">
-        <Navigation />
-        <main className="container mx-auto px-4 py-6">
-          {children}
-        </main>
-        <Toaster position="top-right" />
+        <Providers>
+          <Navigation />
+          <main className="container mx-auto px-4 py-6">
+            {children}
+          </main>
+          <Toaster position="top-right" />
+        </Providers>
       </body>
     </html>
   )

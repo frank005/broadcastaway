@@ -12,6 +12,7 @@ import agoraService from '../../../src/services/agoraService';
 import VideoPlayer from '../../components/VideoPlayer';
 import AIOverlay from '../../components/AIOverlay';
 import { SOURCE_LANGUAGES, TARGET_LANGUAGES } from '../../utils/sttLanguages';
+import BroadcastSessionTracker from '../../../components/BroadcastSessionTracker';
 
 function BroadcastPageContent() {
   const params = useParams();
@@ -3399,6 +3400,7 @@ function BroadcastPageContent() {
 
   return (
     <div className="flex flex-col h-[calc(100vh-8rem)] max-h-[calc(100vh-8rem)] bg-agora-dark text-white overflow-hidden -mx-4 -my-6 w-[calc(100%+2rem)]">
+      <BroadcastSessionTracker active={isBroadcasting} />
       {/* Header */}
       <header className="flex items-center justify-between px-2 sm:px-4 lg:px-6 py-2 sm:py-3 lg:py-4 bg-agora-dark border-b border-gray-800 overflow-hidden">
         <div className="flex items-center space-x-1.5 sm:space-x-4 min-w-0 flex-1 overflow-hidden">

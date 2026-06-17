@@ -3,12 +3,16 @@
 import { useState, useEffect, useRef, Suspense } from 'react';
 import Link from 'next/link';
 import { usePathname, useSearchParams } from 'next/navigation';
-import { ShoppingBag, Video, Users, Home, Settings, HelpCircle, X, Menu } from 'lucide-react';
+import { ShoppingBag, Video, Users, Home, Settings, HelpCircle, X, Menu, Clock, LogOut } from 'lucide-react';
 import { toast } from 'react-hot-toast';
+import { useAuth } from '@/context/AuthContext';
 
 function NavigationContent() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const { me, signOutUrl, sessionTimer } = useAuth();
+  const { timeRemaining, showWarning, formatTimeRemaining } = sessionTimer;
+  const authUser = me?.authenticated ? me.user : null;
   const [showSettings, setShowSettings] = useState(false);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
   const [userName, setUserName] = useState<string>('');
@@ -162,6 +166,12 @@ function NavigationContent() {
   };
 
   const getUserInitial = () => {
+    if (authUser?.name) {
+      return authUser.name.charAt(0).toUpperCase();
+    }
+    if (authUser?.email) {
+      return authUser.email.charAt(0).toUpperCase();
+    }
     if (userName) {
       return userName.charAt(0).toUpperCase();
     }
@@ -202,6 +212,27 @@ function NavigationContent() {
 
             {/* Right side - Mobile menu button + User profile */}
             <div className="flex items-center gap-2">
+              {timeRemaining !== null && timeRemaining !== Infinity && (
+                <div
+                  className={`hidden sm:flex items-center gap-1 px-2 py-1 rounded text-xs ${
+                    showWarning
+                      ? 'bg-amber-100 text-amber-800'
+                      : 'bg-gray-100 text-gray-600'
+                  }`}
+                >
+                  <Clock size={12} />
+                  <span>{formatTimeRemaining(timeRemaining)}</span>
+                </div>
+              )}
+              {signOutUrl && (
+                <a
+                  href={signOutUrl}
+                  className="hidden sm:block text-gray-500 hover:text-gray-700 p-1"
+                  title="Sign out"
+                >
+                  <LogOut size={18} />
+                </a>
+              )}
               {/* Mobile Menu Button */}
               <button
                 onClick={() => setShowMobileMenu(!showMobileMenu)}

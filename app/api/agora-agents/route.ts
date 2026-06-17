@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createRequire } from 'module';
+import { authMode, getSessionUser } from '@/lib/auth';
 
 // Ensure we're using Node.js runtime (not Edge)
 export const runtime = 'nodejs';
@@ -32,6 +33,11 @@ try {
 
 export async function POST(request: NextRequest) {
   try {
+    const user = await getSessionUser();
+    if (!user && authMode() !== 'bypass') {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     const body = await request.json();
     const { action, channelName, agentUid, clientUid, prompt, profileContext } = body;
     

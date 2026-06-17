@@ -2,6 +2,7 @@
 import { NextResponse } from 'next/server';
 import { createRequire } from 'module';
 import path from 'path';
+import { authMode, getSessionUser } from '@/lib/auth';
 
 // Ensure we're using Node.js runtime (not Edge) for CommonJS require
 export const runtime = 'nodejs';
@@ -44,6 +45,11 @@ try {
 
 export async function POST(request) {
   try {
+    const user = await getSessionUser();
+    if (!user && authMode() !== 'bypass') {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     // Ensure token builder is loaded
     if (!RtcTokenBuilder || !RtcRole) {
       // Try to load it again using static relative path
