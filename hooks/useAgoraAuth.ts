@@ -35,9 +35,22 @@ export function useAgoraAuth() {
     if (typeof window !== "undefined") {
       const params = new URLSearchParams(window.location.search);
       const err = params.get("authError");
+      let cleaned = false;
+
       if (err) {
         setAuthError(err);
         params.delete("authError");
+        cleaned = true;
+      }
+
+      for (const key of ["code", "state", "loginId", "error"]) {
+        if (params.has(key)) {
+          params.delete(key);
+          cleaned = true;
+        }
+      }
+
+      if (cleaned) {
         const next = params.toString();
         const url = next
           ? `${window.location.pathname}?${next}`

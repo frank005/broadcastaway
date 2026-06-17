@@ -12,6 +12,8 @@ function NavigationContent() {
   const searchParams = useSearchParams();
   const { me, signOutUrl, sessionTimer } = useAuth();
   const { timeRemaining, showWarning, formatTimeRemaining } = sessionTimer;
+  const showQuotaBadge = timeRemaining !== null;
+  const quotaUnlimited = timeRemaining === Infinity;
   const authUser = me?.authenticated ? me.user : null;
   const [showSettings, setShowSettings] = useState(false);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
@@ -212,16 +214,26 @@ function NavigationContent() {
 
             {/* Right side - Mobile menu button + User profile */}
             <div className="flex items-center gap-2">
-              {timeRemaining !== null && timeRemaining !== Infinity && (
+              {showQuotaBadge && (
                 <div
                   className={`hidden sm:flex items-center gap-1 px-2 py-1 rounded text-xs ${
-                    showWarning
-                      ? 'bg-amber-100 text-amber-800'
-                      : 'bg-gray-100 text-gray-600'
+                    quotaUnlimited
+                      ? 'bg-emerald-50 text-emerald-700'
+                      : showWarning
+                        ? 'bg-amber-100 text-amber-800'
+                        : 'bg-gray-100 text-gray-600'
                   }`}
                 >
                   <Clock size={12} />
-                  <span>{formatTimeRemaining(timeRemaining)}</span>
+                  <span
+                    title={
+                      quotaUnlimited
+                        ? 'Unlimited demo time for Agora accounts'
+                        : 'Daily demo time remaining (UTC day)'
+                    }
+                  >
+                    {quotaUnlimited ? 'Unlimited' : formatTimeRemaining(timeRemaining)}
+                  </span>
                 </div>
               )}
               {signOutUrl && (
